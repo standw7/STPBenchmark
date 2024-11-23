@@ -1,4 +1,14 @@
 # file for models
+import torch
+import gpytorch
+from gpytorch.models import ApproximateGP
+from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
+from gpytorch.means import ConstantMean
+from gpytorch.kernels import ScaleKernel, RBFKernel
+from gpytorch.likelihoods import GaussianLikelihood
+from gpytorch.mlls import VariationalELBO, ExactMarginalLogLikelihood
+from gpytorch.distributions import MultivariateNormal
+
 class STP(gpytorch.models.ApproximateGP):
     def __init__(self, inducing_points):
         super().__init__(variational_strategy)
