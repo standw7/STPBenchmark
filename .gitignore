@@ -1,0 +1,17 @@
+# Python cache files
+__pycache__/
+*.pyc
+
+# Mac system files
+.DS_Store
+
+# Virtual environments
+venv/
+env/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Local development settings
+.env
