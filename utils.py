@@ -1,8 +1,9 @@
-# utils
-# import libraries
 import numpy as np
 import torch
 import random
+from tqdm import trange
+import gpytorch
+
 
 # set the seed for all random use
 def set_seeds(seed):
@@ -11,28 +12,32 @@ def set_seeds(seed):
     torch.cuda.manual_seed_all(seed)
     random.seed(seed)
 
+
 class TorchStandardScaler:
     def fit(self, x):
         x = x.clone()
         # calculate mean and std of the tensor
         self.mean = x.mean(0, keepdim=True)
         self.std = x.std(0, unbiased=False, keepdim=True)
+
     def transform(self, x):
         x = x.clone()
         # standardize the tensor
         x -= self.mean
-        x /= (self.std + 1e-10)
+        x /= self.std + 1e-10
         return x
+
     def fit_transform(self, x):
-        # copy the tensor as to not modify the original 
+        # copy the tensor as to not modify the original
         x = x.clone()
         # calculate mean and std of the tensor
         self.mean = x.mean(0, keepdim=True)
         self.std = x.std(0, unbiased=False, keepdim=True)
         # standardize the tensor
         x -= self.mean
-        x /= (self.std + 1e-10)
+        x /= self.std + 1e-10
         return x
+
 
 class TorchNormalizer:
     def fit(self, x):
@@ -50,6 +55,7 @@ class TorchNormalizer:
         self.min = torch.min(x, dim=0).values
         # normalize the tensor
         return (x.clone() - self.min) / (self.max - self.min)
+
 
 def initial_points(x, y):
     # Calculate the threshold for the top 5%
