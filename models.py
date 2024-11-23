@@ -11,7 +11,7 @@ from gpytorch.distributions import MultivariateNormal
 from gpytorch.variational import TrilNaturalVariationalDistribution
 
 
-class STP(gpytorch.models.ApproximateGP):
+class VarSTP(gpytorch.models.ApproximateGP):
     def __init__(self, inducing_points):
 
         variational_distribution = CholeskyVariationalDistribution(
@@ -78,7 +78,7 @@ class ExactGP(gpytorch.models.ExactGP):
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
-class VariationalGP(ApproximateGP):
+class VarGP(ApproximateGP):
     def __init__(self, inducing_points):
         variational_distribution = CholeskyVariationalDistribution(
             inducing_points.size(0)
@@ -89,20 +89,17 @@ class VariationalGP(ApproximateGP):
             variational_distribution,
             learn_inducing_locations=True,
         )
-        super(VariationalGP, self).__init__(variational_strategy)
+        super(VarGP, self).__init__(variational_strategy)
         self.mean_module = ConstantMean()
         self.covar_module = ScaleKernel(RBFKernel(ard_num_dims=inducing_points.size(1)))
         self.likelihood = GaussianLikelihood()
-        self.objective_function = gpytorch.mlls.VariationalELBO(
-            self.likelihood, self, num_data=inducting_points.size(0)
-        )
 
     def forward(self, x):
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
-    def update_objective(self, train_y):
-        self.objective_function = gpytorch.mlls.VariationalELBO(
-            self.likelihood, self, num_data=train_y.numel()
-        )
+    # def update_objective(self, train_y):
+    #     self.objective_function = gpytorch.mlls.VariationalELBO(
+    #         self.likelihood, self, num_data=train_y.numel()
+    #     )

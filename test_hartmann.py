@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import gpytorch
 from tqdm import trange
 
-from models import STP
+from models import VarSTP, VarGP
 from utils import set_seeds
 from optim import train_variational_model
 
@@ -18,7 +18,8 @@ hartmann = Hartmann(dim=6, negate=True)
 X_train = torch.rand(100, 6)
 y_train = hartmann(X_train).flatten()
 
-model = STP(inducing_points=X_train)
+model = VarSTP(inducing_points=X_train)
+# model = VarGP(inducing_points=X_train)
 
 train_variational_model(model, X_train, y_train, epochs=1000, lr=0.1)
 
