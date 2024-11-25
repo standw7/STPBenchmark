@@ -30,11 +30,25 @@ class VarSTP(gpytorch.models.ApproximateGP):
         self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
         self.likelihood = gpytorch.likelihoods.StudentTLikelihood()
 
+    @property
+    def num_outputs(self) -> int:
+        """Required for BoTorch compatibility"""
+        return 1
+
     def forward(self, x):
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
 
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+    def posterior(self, X, observation_noise=False, **kwargs):
+        """Required for BoTorch compatibility"""
+        self.eval()  # Make sure model is in eval mode
+        with torch.no_grad():
+            mvn = self(X)
+            if observation_noise:
+                mvn = self.likelihood(mvn)
+        return mvn
 
     # # update the objective function with the new training data
     # def update_objective(self, train_y):
@@ -99,7 +113,16 @@ class VarGP(ApproximateGP):
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
-    # def update_objective(self, train_y):
-    #     self.objective_function = gpytorch.mlls.VariationalELBO(
-    #         self.likelihood, self, num_data=train_y.numel()
-    #     )
+    @property
+    def num_outputs(self) -> int:
+        """Required for BoTorch compatibility"""
+        return 1
+
+    def posterior(self, X, observation_noise=False, **kwargs):
+        """Required for BoTorch compatibility"""
+        self.eval()  # Make sure model is in eval mode
+        with torch.no_grad():
+            mvn = self(X)
+            if observation_noise:
+                mvn = self.likelihood(mvn)
+        return mvn

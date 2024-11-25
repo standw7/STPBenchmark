@@ -71,7 +71,29 @@ def initial_points(x, y, num_initial_points):
     # Select the corresponding points from train_x and train_y
     x_initial = x[indicesSTP]
     y_initial = y[indicesSTP]
+
     return x_initial, y_initial
+
+
+def get_initial_samples(y, n_samples, percentile=95):
+    # Get the threshold value for the given percentile
+    threshold = torch.quantile(y, percentile / 100)
+
+    # Get indices where y is below the threshold
+    eligible_indices = torch.where(y <= threshold)[0]
+
+    # Randomly sample n indices from eligible ones
+    if n_samples > len(eligible_indices):
+        raise ValueError(
+            f"Cannot sample {n_samples} points. Only {len(eligible_indices)} points below {percentile}th percentile."
+        )
+
+    # Random sampling in PyTorch
+    perm = torch.randperm(len(eligible_indices))[:n_samples]
+    sampled_indices = eligible_indices[perm]
+
+    return sampled_indices
+
 
 # Set the device to use
 def get_device():
@@ -86,18 +108,20 @@ def get_device():
         print("CUDA/MPS is not available")
         return torch.device("cpu")
 
+
 # Expected Improvement
 def EI(mean, std, best_observed, minimize=False):
     if minimize:
         improvement = best_observed - mean
     else:
         improvement = mean - best_observed
-    
+
     z = improvement / std
     normal = torch.distributions.Normal(0, 1)
-    
+
     ei = improvement * normal.cdf(z) + std * normal.log_prob(z).exp()
     return ei
+
 
 def get_top_samples(train_y, top_percentage=5):
     """
@@ -112,32 +136,43 @@ def get_top_samples(train_y, top_percentage=5):
     """
     n_top = int(math.ceil(len(train_y) * (top_percentage / 100)))
     train_y_df = pd.DataFrame(train_y.numpy(), columns=[0])
-    top_samples = train_y_df.nlargest(n_top, train_y_df.columns[0], keep='first').iloc[:, 0].values.tolist()
+    top_samples = (
+        train_y_df.nlargest(n_top, train_y_df.columns[0], keep="first")
+        .iloc[:, 0]
+        .values.tolist()
+    )
 
     print(f"Number of top {top_percentage}% samples: {len(top_samples)}")
     print(f"Top {top_percentage}% samples: {top_samples}")
 
     return top_samples
 
+
 def num_top_samples(y, top_samples):
-        return len([i for i in y if i in top_samples]) / len(top_samples)
+    return len([i for i in y if i in top_samples]) / len(top_samples)
+
 
 # Function to dynamically collect arrays
 def collect_arrays(prefix, num_arrays):
     arrays = []
     for i in range(num_arrays):
-        array = globals().get(f'{prefix}{i}', None)
+        array = globals().get(f"{prefix}{i}", None)
         if array is not None:
             arrays.append(array)
     return arrays
 
+
 # Function to pad arrays with the last element to match the maximum length
 def pad_array(array, max_length):
-    return np.pad(array, (0, max_length - len(array)), 'constant', constant_values=array[-1])
+    return np.pad(
+        array, (0, max_length - len(array)), "constant", constant_values=array[-1]
+    )
+
 
 def find_max_length(prefix, num_arrays):
     arrays = collect_arrays(prefix, num_arrays)
     return max(len(arr) for arr in arrays)
+
 
 # Process arrays for each type
 def process_arrays(prefix, num_arrays, max_length):
