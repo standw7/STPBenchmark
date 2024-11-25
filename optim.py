@@ -14,7 +14,7 @@ def train_variational_model(model, X, y, epochs=1000, lr=0.01, verbose=False):
     mll = gpytorch.mlls.VariationalELBO(model.likelihood, model, num_data=y.size(0))
 
     loss_history = []
-    for i in trange(epochs):
+    for i in range(epochs):
         ### Perform Adam step to optimize hyperparameters
         hyperparameter_optimizer.zero_grad()
         output = model(X)
