@@ -22,7 +22,7 @@ results = run_campaign(
     n_trials=25,
     epochs=100,
     learning_rate=0.1,
-    model_class=VarSTP,
+    model_class=VarGP,
     seed=42,
 )
 

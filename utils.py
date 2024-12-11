@@ -13,169 +13,120 @@ def set_seeds(seed):
     random.seed(seed)
 
 
-import torch
-
-
 class TorchStandardScaler:
-    """Standardize features by removing the mean and scaling to unit variance.
+    """A PyTorch implementation of StandardScaler that standardizes features by removing the mean and scaling to unit variance.
 
-    The standardization is given by:
-        X_scaled = (X - mean) / std
-
-    Attributes:
-        mean: Tensor of shape (1, n_features) containing feature means
-        std: Tensor of shape (1, n_features) containing feature standard deviations
-
-    Note:
-        Handles zero variance features by adding small epsilon (1e-10) to std
-        All operations are performed in-place where possible for memory efficiency
+    The standardization is performed along dimension 0 (rows) while preserving dimensions through keepdim=True.
+    Transformation is performed using the formula: z = (x - mean) / std
     """
 
-    def __init__(self):
-        self.mean = None
-        self.std = None
-
-    def fit(self, x: torch.Tensor) -> None:
-        """Compute the mean and std to be used for scaling.
+    def fit(self, x):
+        """Compute the mean and standard deviation of the input tensor to be used for subsequent scaling.
 
         Args:
-            x: Tensor of shape (n_samples, n_features) to compute scaling parameters from
+            x (torch.Tensor): Input tensor to be fitted
         """
-        # Ensure input is 2D
-        if x.dim() == 1:
-            x = x.view(-1, 1)
-
-        # Calculate mean and std with keepdim to maintain shape consistency
+        x = x.clone()
         self.mean = x.mean(0, keepdim=True)
         self.std = x.std(0, unbiased=False, keepdim=True)
 
-    def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Apply standardization using stored parameters.
+    def transform(self, x):
+        """Transform the input tensor using the previously computed mean and standard deviation.
 
         Args:
-            x: Tensor of shape (n_samples, n_features) to be scaled
+            x (torch.Tensor): Input tensor to be transformed
 
         Returns:
-            Scaled tensor of same shape as input
+            torch.Tensor: Transformed tensor with zero mean and unit variance
         """
-        # Ensure input is 2D
-        if x.dim() == 1:
-            x = x.view(-1, 1)
-
-        # In-place operations for memory efficiency
-        x = x - self.mean  # Broadcast subtraction
-        x.div_(self.std + 1e-10)  # In-place division
+        x = x.clone()
+        x -= self.mean
+        x /= self.std + 1e-10
         return x
 
-    def fit_transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Fit to data, then transform it.
+    def fit_transform(self, x):
+        """Fit the scaler and transform the input tensor in one step.
 
         Args:
-            x: Tensor of shape (n_samples, n_features) to fit to and transform
+            x (torch.Tensor): Input tensor to be fitted and transformed
 
         Returns:
-            Scaled tensor of same shape as input
+            torch.Tensor: Transformed tensor with zero mean and unit variance
         """
-        self.fit(x)
-        return self.transform(x.clone())  # Clone to avoid modifying input
+        x = x.clone()
+        self.mean = x.mean(0, keepdim=True)
+        self.std = x.std(0, unbiased=False, keepdim=True)
+        x -= self.mean
+        x /= self.std + 1e-10
+        return x
 
-    def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert data back to original scale.
+    def inverse_transform(self, x):
+        """Transform standardized data back to the original scale.
 
         Args:
-            x: Tensor of shape (n_samples, n_features) of scaled data
+            x (torch.Tensor): Standardized input tensor
 
         Returns:
-            Tensor of same shape in original scale
+            torch.Tensor: Tensor transformed back to original scale
         """
-        # Ensure input is 2D
-        if x.dim() == 1:
-            x = x.view(-1, 1)
-
-        # In-place operations
-        x = x * (self.std + 1e-10)  # Broadcast multiplication
-        x.add_(self.mean)  # In-place addition
+        x = x.clone()
+        x *= self.std + 1e-10
+        x += self.mean
         return x
 
 
 class TorchNormalizer:
-    """Normalize features to the [0, 1] range.
+    """A PyTorch implementation of MinMaxScaler that scales features to a fixed range [0, 1].
 
-    The normalization is given by:
-        X_scaled = (X - min) / (max - min)
-
-    Attributes:
-        max: Tensor of shape (n_features,) containing feature maxima
-        min: Tensor of shape (n_features,) containing feature minima
-
-    Note:
-        All operations are performed in-place where possible for memory efficiency
+    The normalization is performed along dimension 0 (rows) while preserving the tensor dimensions.
+    Transformation is performed using the formula: z = (x - min) / (max - min)
     """
 
-    def __init__(self):
-        self.max = None
-        self.min = None
-
-    def fit(self, x: torch.Tensor) -> None:
-        """Compute the min and max to be used for scaling.
+    def fit(self, x):
+        """Compute the minimum and maximum values of the input tensor to be used for subsequent scaling.
 
         Args:
-            x: Tensor of shape (n_samples, n_features) to compute scaling parameters from
+            x (torch.Tensor): Input tensor to be fitted
         """
-        # Ensure input is 2D
-        if x.dim() == 1:
-            x = x.view(-1, 1)
+        self.max = torch.max(x, dim=0).values
+        self.min = torch.min(x, dim=0).values
 
-        # Calculate max and min along first dimension (samples)
-        self.max = x.max(0).values
-        self.min = x.min(0).values
-
-    def transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Apply normalization using stored parameters.
+    def transform(self, x):
+        """Transform the input tensor using the previously computed minimum and maximum values.
 
         Args:
-            x: Tensor of shape (n_samples, n_features) to be scaled
+            x (torch.Tensor): Input tensor to be transformed
 
         Returns:
-            Scaled tensor of same shape as input
+            torch.Tensor: Transformed tensor with values scaled to [0, 1]
         """
-        # Ensure input is 2D
-        if x.dim() == 1:
-            x = x.view(-1, 1)
+        return (x.clone() - self.min) / (self.max - self.min)
 
-        # In-place operations
-        x = x - self.min  # Broadcast subtraction
-        x.div_(self.max - self.min)  # In-place division
-        return x
-
-    def fit_transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Fit to data, then transform it.
+    def fit_transform(self, x):
+        """Fit the normalizer and transform the input tensor in one step.
 
         Args:
-            x: Tensor of shape (n_samples, n_features) to fit to and transform
+            x (torch.Tensor): Input tensor to be fitted and transformed
 
         Returns:
-            Scaled tensor of same shape as input
+            torch.Tensor: Transformed tensor with values scaled to [0, 1]
         """
-        self.fit(x)
-        return self.transform(x.clone())  # Clone to avoid modifying input
+        self.max = torch.max(x, dim=0).values
+        self.min = torch.min(x, dim=0).values
+        return (x.clone() - self.min) / (self.max - self.min)
 
-    def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert data back to original scale.
+    def inverse_transform(self, x):
+        """Transform normalized data back to the original scale.
 
         Args:
-            x: Tensor of shape (n_samples, n_features) of scaled data
+            x (torch.Tensor): Normalized input tensor
 
         Returns:
-            Tensor of same shape in original scale
+            torch.Tensor: Tensor transformed back to original scale
         """
-        # Ensure input is 2D
-        if x.dim() == 1:
-            x = x.view(-1, 1)
-
-        # In-place operations
-        x = x * (self.max - self.min)  # Broadcast multiplication
-        x.add_(self.min)  # In-place addition
+        x = x.clone()
+        x *= self.max - self.min
+        x += self.min
         return x
 
 
