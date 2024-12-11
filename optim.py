@@ -1,9 +1,13 @@
 import torch
 import gpytorch
 from tqdm import trange
+from utils import TorchStandardScaler
 
+def train_variational_model(model, X, y, epochs=1000, lr=0.01, verbose=False, y_standardize=True):
 
-def train_variational_model(model, X, y, epochs=1000, lr=0.01, verbose=False):
+    if y_standardize:
+        y = TorchStandardScaler().fit_transform(y)
+
     model.train(), model.likelihood.train()
 
     hyperparameter_optimizer = torch.optim.Adam(

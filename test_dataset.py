@@ -15,9 +15,6 @@ y = torch.tensor(data[:, -1], dtype=torch.double).flatten()
 normalizer = TorchNormalizer()
 X = normalizer.fit_transform(X)
 
-scaler = TorchStandardScaler()
-y = scaler.fit_transform(y)
-
 results = run_campaign(
     X,
     y,

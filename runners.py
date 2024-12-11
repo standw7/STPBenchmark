@@ -18,6 +18,7 @@ def run_campaign(
     epochs: int = 100,
     learning_rate: float = 0.1,
     seed: int = 42,
+    y_standardize: bool = True,
 ) -> dict:
     """
     Performs Bayesian optimization loop on given dataset.
