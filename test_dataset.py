@@ -2,13 +2,21 @@ import torch
 import numpy as np
 from models import VarSTP, VarGP
 import matplotlib.pyplot as plt
+from utils import TorchStandardScaler, TorchNormalizer
 
 from runners import run_campaign
 
 # Load and preprocess data
 data = np.loadtxt("data/P3HT_dataset.csv", delimiter=",", skiprows=1)
+
 X = torch.tensor(data[:, 0:-1], dtype=torch.double)
 y = torch.tensor(data[:, -1], dtype=torch.double).flatten()
+
+normalizer = TorchNormalizer()
+X = normalizer.fit_transform(X)
+
+scaler = TorchStandardScaler()
+y = scaler.fit_transform(y)
 
 results = run_campaign(
     X,
