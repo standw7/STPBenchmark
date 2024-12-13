@@ -4,11 +4,11 @@ from botorch.acquisition import LogExpectedImprovement
 from models import VarSTP, VarGP  # Assuming these are your model classes
 from utils import set_seeds, get_initial_samples
 from optim import train_variational_model
-from tqdm import trange
-from typing import Type, Union, Optional
+from tqdm import tqdm, trange
+from typing import Type, Union, Optional, List, Dict
 
 
-def run_campaign(
+def run_single_loop(
     X: torch.Tensor,
     y: torch.Tensor,
     model_class: Type[Union[VarSTP, VarGP]],
@@ -106,3 +106,44 @@ def run_campaign(
         "y_selected": y_train,
         "trained_model": model,
     }
+
+
+def run_many_loops(
+    X: torch.Tensor,
+    y: torch.Tensor,
+    model_class: Type[Union[VarSTP, VarGP]],
+    seeds: List[int],
+    **kwargs  # To pass through to run_single_loop
+) -> Dict[int, dict]:
+    """
+    Performs multiple Bayesian optimization loops with different random seeds.
+
+    Args:
+        X: Feature matrix
+        y: Target values
+        model_class: Class of the model to use (e.g., VarSTP or VarGP)
+        seeds: List of random seeds to use
+        **kwargs: Additional arguments to pass to run_single_loop
+
+    Returns:
+        Dictionary mapping each seed to its results dictionary containing:
+        - best_x: Best input point found
+        - best_y: Best target value found
+        - X_selected: History of selected points
+        - y_selected: History of selected target values
+        - trained_model: Final trained model
+    """
+    # Initialize dictionary to store results for each seed
+    all_results = {}
+
+    # Run optimization with each seed
+    for seed in tqdm(seeds, desc="Running optimization loops"):
+        # Run single optimization loop with current seed
+        results = run_single_loop(
+            X=X, y=y, model_class=model_class, seed=seed, **kwargs
+        )
+
+        # Store results for this seed
+        all_results[seed] = results
+
+    return all_results
