@@ -18,16 +18,16 @@ X = normalizer.fit_transform(X)
 results = run_many_loops(
     X,
     y,
-    seeds=[1, 25, 323, 42, 5643],
+    seeds=[1, 25, 323, 42, 5643, 32, 76, 23456, 123, 987, 654, 345, 234, 1234, 2345],
     n_initial=10,
-    n_trials=90,
+    n_trials=40,
     epochs=100,
     learning_rate=0.1,
-    model_class=VarSTP,
+    model_class=VarGP,
 )
 
 # Create figure with subplots
-fig, ax = plt.subplots(1, 2, figsize=(7, 4), dpi=200, width_ratios=[5, 1], sharey=True)
+fig, ax = plt.subplots(1, 2, figsize=(6, 4), dpi=200, width_ratios=[8, 1], sharey=True)
 
 # Use the optimization results plot in the first subplot
 plot_optimization_results(ax[0], results, torch.max(y), n_initial=10)
@@ -37,4 +37,7 @@ ax[1].scatter([0] * len(y), y, color="black", marker="o", s=10, alpha=0.5)
 ax[1].set_xticks([])
 
 plt.tight_layout()
+
+plt.savefig("figures/VGP512Samples.png", dpi=500)
+
 plt.show()

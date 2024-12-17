@@ -40,31 +40,30 @@ class VarSTP(gpytorch.models.ApproximateGP):
             self,
             inducing_points,
             variational_distribution,
-            learn_inducing_locations=False,  # Fixed inducing points
+            learn_inducing_locations=True,  # Learn inducing points
         )
-        super().__init__(variational_strategy)
+        super(VarSTP, self).__init__(variational_strategy)
 
         # Mean and covariance setup with dimensionality-aware priors
-        self.mean_module = gpytorch.means.ConstantMean()
-
-        input_dim = inducing_points.size(1)
+        self.mean_module = ConstantMean()
 
         # BoTorch-style lengthscale prior that scales with input dimension
+        input_dim = inducing_points.size(1)
         lengthscale_prior = gpytorch.priors.LogNormalPrior(
             loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
         )
 
-        base_kernel = gpytorch.kernels.RBFKernel(
+        base_kernel = RBFKernel(
             ard_num_dims=input_dim,
             lengthscale_prior=lengthscale_prior,
-            lengthscale_constraint=gpytorch.constraints.GreaterThan(
+            lengthscale_constraint=GreaterThan(
                 2.5e-2, transform=None, initial_value=lengthscale_prior.mode
             ),
         )
 
         # Kernel with outputscale prior
-        outputscale_prior = gpytorch.priors.LogNormalPrior(loc=0.0, scale=1.0)
-        self.covar_module = gpytorch.kernels.ScaleKernel(
+        outputscale_prior = LogNormalPrior(loc=0.0, scale=1.0)
+        self.covar_module = ScaleKernel(
             base_kernel,
             outputscale_prior=outputscale_prior,
             outputscale_constraint=gpytorch.constraints.GreaterThan(
@@ -73,13 +72,12 @@ class VarSTP(gpytorch.models.ApproximateGP):
         )
 
         # Student-T likelihood with priors on noise and degrees of freedom
-        noise_prior = gpytorch.priors.LogNormalPrior(loc=-4.0, scale=1.0)
+        noise_prior = LogNormalPrior(loc=-4.0, scale=1.0)
         df_prior = gpytorch.priors.GammaPrior(2.0, 0.1)  # For degrees of freedom
-
         self.likelihood = gpytorch.likelihoods.StudentTLikelihood(
             noise_prior=noise_prior,
             deg_free_prior=df_prior,
-            noise_constraint=gpytorch.constraints.GreaterThan(
+            noise_constraint=GreaterThan(
                 1e-4, transform=None, initial_value=noise_prior.mode
             ),
         )
@@ -95,7 +93,7 @@ class VarSTP(gpytorch.models.ApproximateGP):
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
-    def posterior(self, X, observation_noise=True, **kwargs):
+    def posterior(self, X, observation_noise=True, num_samples=512, **kwargs):
         """Compute the posterior distribution at test points X.
 
         Args:
@@ -106,30 +104,106 @@ class VarSTP(gpytorch.models.ApproximateGP):
             MultivariateNormal distribution at test locations
         """
         self.eval()
-        with torch.no_grad():
-            mvn = self(X)
+        with torch.no_grad(), gpytorch.settings.num_likelihood_samples(num_samples):
+            posterior = self(X)
             if observation_noise:
-                mvn = self.likelihood(mvn)
-        return mvn
+                posterior = self.likelihood(posterior)
+        return posterior
 
-    def sample_posterior(self, X, num_samples=128, observation_noise=True):
-        """Sample from the posterior distribution at test points X.
+
+class VarGP(ApproximateGP):
+    """Variational Gaussian Process with Gaussian likelihood.
+
+    Uses variational inference with inducing points for scalability. Incorporates
+    BoTorch-style dimensionality-aware priors and learns inducing point locations.
+
+    Note:
+        Expects inputs to be normalized to [0,1] and outputs to be standardized.
+        Uses learnable inducing point locations (learn_inducing_locations=True).
+    """
+
+    def __init__(self, inducing_points):
+        """Initialize model with inducing points.
 
         Args:
-            X: Test locations (N x D tensor)
-            num_samples: Number of samples to draw
-            observation_noise: Whether to include likelihood noise
+            inducing_points: Initial inducing point locations, shape (num_inducing, input_dim)
+        """
+        # Set up sparse variational approximation with learnable inducing points
+        variational_distribution = CholeskyVariationalDistribution(
+            inducing_points.size(0)
+        )
+        variational_strategy = VariationalStrategy(
+            self,
+            inducing_points,
+            variational_distribution,
+            learn_inducing_locations=True,  # Fixed inducing points
+        )
+        super(VarGP, self).__init__(variational_strategy)
+
+        # Mean and likelihood setup with BoTorch-style priors
+        self.mean_module = ConstantMean()
+
+        # Setup kernel with dimensionality-aware priors
+        input_dim = inducing_points.size(1)
+        lengthscale_prior = LogNormalPrior(
+            loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
+        )
+
+        base_kernel = RBFKernel(
+            ard_num_dims=input_dim,
+            lengthscale_prior=lengthscale_prior,
+            lengthscale_constraint=GreaterThan(
+                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
+            ),
+        )
+
+        # Kernel with outputscale prior
+        outputscale_prior = LogNormalPrior(loc=0.0, scale=1.0)
+        self.covar_module = ScaleKernel(
+            base_kernel,
+            outputscale_prior=outputscale_prior,
+            outputscale_constraint=GreaterThan(
+                1e-4, transform=None, initial_value=outputscale_prior.mode
+            ),
+        )
+
+        noise_prior = LogNormalPrior(loc=-4.0, scale=1.0)
+        self.likelihood = gpytorch.likelihoods.GaussianLikelihood(
+            noise_prior=noise_prior,
+            noise_constraint=GreaterThan(
+                1e-4,
+                transform=None,
+                initial_value=noise_prior.mode,
+            ),
+        )
+
+    @property
+    def num_outputs(self) -> int:
+        """Number of output dimensions. Required for BoTorch compatibility."""
+        return 1
+
+    def forward(self, x):
+        """Compute the prior distribution at input locations x."""
+        mean_x = self.mean_module(x)
+        covar_x = self.covar_module(x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+    def posterior(self, X, observation_noise=True, num_samples=512, **kwargs):
+        """Compute the posterior distribution at test points X.
+
+        Args:
+            X: Test locations
+            observation_noise: Whether to include likelihood noise in predictions
 
         Returns:
-            Tensor of samples (num_samples x N)
+            MultivariateNormal distribution at test locations
         """
         self.eval()
         with torch.no_grad(), gpytorch.settings.num_likelihood_samples(num_samples):
             posterior = self(X)
             if observation_noise:
                 posterior = self.likelihood(posterior)
-            samples = posterior.sample()
-        return samples
+        return posterior
 
 
 class ExactGP(gpytorch.models.ExactGP):
@@ -197,117 +271,3 @@ class ExactGP(gpytorch.models.ExactGP):
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-
-
-class VarGP(ApproximateGP):
-    """Variational Gaussian Process with Gaussian likelihood.
-
-    Uses variational inference with inducing points for scalability. Incorporates
-    BoTorch-style dimensionality-aware priors and learns inducing point locations.
-
-    Note:
-        Expects inputs to be normalized to [0,1] and outputs to be standardized.
-        Uses learnable inducing point locations (learn_inducing_locations=True).
-    """
-
-    def __init__(self, inducing_points):
-        """Initialize model with inducing points.
-
-        Args:
-            inducing_points: Initial inducing point locations, shape (num_inducing, input_dim)
-        """
-        # Set up sparse variational approximation with learnable inducing points
-        variational_distribution = CholeskyVariationalDistribution(
-            inducing_points.size(0)
-        )
-        variational_strategy = VariationalStrategy(
-            self,
-            inducing_points,
-            variational_distribution,
-            learn_inducing_locations=True,  # Learn inducing locations
-        )
-        super(VarGP, self).__init__(variational_strategy)
-
-        # Mean and likelihood setup with BoTorch-style priors
-        self.mean_module = ConstantMean()
-
-        noise_prior = LogNormalPrior(loc=-4.0, scale=1.0)
-        self.likelihood = GaussianLikelihood(
-            noise_prior=noise_prior,
-            noise_constraint=GreaterThan(
-                1e-4,
-                transform=None,
-                initial_value=noise_prior.mode,
-            ),
-        )
-
-        # Setup kernel with dimensionality-aware priors
-        input_dim = inducing_points.size(1)
-        lengthscale_prior = LogNormalPrior(
-            loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
-        )
-
-        base_kernel = RBFKernel(
-            ard_num_dims=input_dim,
-            lengthscale_prior=lengthscale_prior,
-            lengthscale_constraint=GreaterThan(
-                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
-            ),
-        )
-
-        # Kernel with outputscale prior
-        outputscale_prior = LogNormalPrior(loc=0.0, scale=1.0)
-        self.covar_module = ScaleKernel(
-            base_kernel,
-            outputscale_prior=outputscale_prior,
-            outputscale_constraint=GreaterThan(
-                1e-4, transform=None, initial_value=outputscale_prior.mode
-            ),
-        )
-
-    def forward(self, x):
-        """Compute the prior distribution at input locations x."""
-        mean_x = self.mean_module(x)
-        covar_x = self.covar_module(x)
-        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
-
-    @property
-    def num_outputs(self) -> int:
-        """Number of output dimensions. Required for BoTorch compatibility."""
-        return 1
-
-    def posterior(self, X, observation_noise=True, **kwargs):
-        """Compute the posterior distribution at test points X.
-
-        Args:
-            X: Test locations
-            observation_noise: Whether to include likelihood noise in predictions
-
-        Returns:
-            MultivariateNormal distribution at test locations
-        """
-        self.eval()
-        with torch.no_grad():
-            mvn = self(X)
-            if observation_noise:
-                mvn = self.likelihood(mvn)
-        return mvn
-
-    def sample_posterior(self, X, num_samples=128, observation_noise=True):
-        """Sample from the posterior distribution at test points X.
-
-        Args:
-            X: Test locations (N x D tensor)
-            num_samples: Number of samples to draw
-            observation_noise: Whether to include likelihood noise
-
-        Returns:
-            Tensor of samples (num_samples x N)
-        """
-        self.eval()
-        with torch.no_grad(), gpytorch.settings.num_likelihood_samples(num_samples):
-            posterior = self(X)
-            if observation_noise:
-                posterior = self.likelihood(posterior)
-            samples = posterior.sample()
-        return samples
