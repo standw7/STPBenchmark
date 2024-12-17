@@ -95,7 +95,7 @@ class VarSTP(gpytorch.models.ApproximateGP):
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
-    def posterior(self, X, observation_noise=False, **kwargs):
+    def posterior(self, X, observation_noise=True, **kwargs):
         """Compute the posterior distribution at test points X.
 
         Args:
@@ -111,6 +111,25 @@ class VarSTP(gpytorch.models.ApproximateGP):
             if observation_noise:
                 mvn = self.likelihood(mvn)
         return mvn
+
+    def sample_posterior(self, X, num_samples=128, observation_noise=True):
+        """Sample from the posterior distribution at test points X.
+
+        Args:
+            X: Test locations (N x D tensor)
+            num_samples: Number of samples to draw
+            observation_noise: Whether to include likelihood noise
+
+        Returns:
+            Tensor of samples (num_samples x N)
+        """
+        self.eval()
+        with torch.no_grad(), gpytorch.settings.num_likelihood_samples(num_samples):
+            posterior = self(X)
+            if observation_noise:
+                posterior = self.likelihood(posterior)
+            samples = posterior.sample()
+        return samples
 
 
 class ExactGP(gpytorch.models.ExactGP):
@@ -257,7 +276,7 @@ class VarGP(ApproximateGP):
         """Number of output dimensions. Required for BoTorch compatibility."""
         return 1
 
-    def posterior(self, X, observation_noise=False, **kwargs):
+    def posterior(self, X, observation_noise=True, **kwargs):
         """Compute the posterior distribution at test points X.
 
         Args:
@@ -273,3 +292,22 @@ class VarGP(ApproximateGP):
             if observation_noise:
                 mvn = self.likelihood(mvn)
         return mvn
+
+    def sample_posterior(self, X, num_samples=128, observation_noise=True):
+        """Sample from the posterior distribution at test points X.
+
+        Args:
+            X: Test locations (N x D tensor)
+            num_samples: Number of samples to draw
+            observation_noise: Whether to include likelihood noise
+
+        Returns:
+            Tensor of samples (num_samples x N)
+        """
+        self.eval()
+        with torch.no_grad(), gpytorch.settings.num_likelihood_samples(num_samples):
+            posterior = self(X)
+            if observation_noise:
+                posterior = self.likelihood(posterior)
+            samples = posterior.sample()
+        return samples
