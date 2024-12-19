@@ -6,6 +6,7 @@ from utils import set_seeds, get_initial_samples
 from optim import train_variational_model
 from tqdm import tqdm, trange
 from typing import Type, Union, Optional, List, Dict
+import warnings
 
 
 def run_single_loop(
@@ -18,7 +19,6 @@ def run_single_loop(
     epochs: int = 100,
     learning_rate: float = 0.1,
     seed: int = 42,
-    y_standardize: bool = True,
 ) -> dict:
     """
     Performs Bayesian optimization loop on given dataset.
@@ -62,10 +62,6 @@ def run_single_loop(
     X_candidate = X[mask]
     y_candidate = y[mask]
 
-    # Store optimization history
-    X_selected = [X_train.clone()]
-    y_selected = [y_train.clone()]
-
     for _ in trange(n_trials):
         # Initialize and train model
         if "inducing_points" in model_class.__init__.__code__.co_varnames:
@@ -78,9 +74,15 @@ def run_single_loop(
 
         # Get next point using LogExpectedImprovement
         model.eval()
-        acq_values = LogExpectedImprovement(
-            model, best_f=y_train.max(), maximize=True
-        ).forward(X_candidate.unsqueeze(1))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            acq_values = LogExpectedImprovement(
+                model, best_f=y_train.max(), maximize=True
+            ).forward(X_candidate.unsqueeze(1))
+
+        # if observation noise, take mean of outputs
+        if acq_values.ndim > 1:
+            acq_values = torch.mean(acq_values, dim=0)
 
         best_idx = torch.argmax(acq_values)
 
@@ -113,7 +115,7 @@ def run_many_loops(
     y: torch.Tensor,
     model_class: Type[Union[VarSTP, VarGP]],
     seeds: List[int],
-    **kwargs  # To pass through to run_single_loop
+    **kwargs,  # To pass through to run_single_loop
 ) -> Dict[int, dict]:
     """
     Performs multiple Bayesian optimization loops with different random seeds.
@@ -138,12 +140,16 @@ def run_many_loops(
 
     # Run optimization with each seed
     for seed in tqdm(seeds, desc="Running optimization loops"):
-        # Run single optimization loop with current seed
-        results = run_single_loop(
-            X=X, y=y, model_class=model_class, seed=seed, **kwargs
-        )
+        try:
+            # Run single optimization loop with current seed
+            results = run_single_loop(
+                X=X, y=y, model_class=model_class, seed=seed, **kwargs
+            )
+            all_results[seed] = results
+        except Exception as e:
+            print(f"Error encountered for seed {seed}: {e}")
+            print("Continung with next seed...")
 
         # Store results for this seed
-        all_results[seed] = results
 
     return all_results

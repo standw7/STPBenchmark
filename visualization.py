@@ -10,8 +10,8 @@ plt.rcParams.update({"font.size": 10})
 
 def plot_with_contrast(ax, x, y, color="maroon", thick_lw=3.2, thin_lw=2.0, label=None):
     """Creates a line plot with thick/thin contrast effect."""
-    ax.plot(x, y, color="black", lw=thick_lw, label=label)
-    ax.plot(x, y, color=color, lw=thin_lw)
+    ax.plot(x, y, color="black", lw=thick_lw)
+    ax.plot(x, y, color=color, lw=thin_lw, label=label)
 
 
 def fill_between_with_contrast(
@@ -50,7 +50,8 @@ def plot_optimization_results(
 
     all_trajectories = np.array(all_trajectories)
     mean_trajectory = np.mean(all_trajectories, axis=0)
-    # std_trajectory = np.std(all_trajectories, axis=0)
+    p25_trajectory = np.percentile(all_trajectories, 25, axis=0)
+    p75_trajectory = np.percentile(all_trajectories, 75, axis=0)
     min_trajectory = np.min(all_trajectories, axis=0)
     max_trajectory = np.max(all_trajectories, axis=0)
 
@@ -58,12 +59,21 @@ def plot_optimization_results(
     fill_between_with_contrast(
         ax,
         trials,
+        p25_trajectory,
+        p75_trajectory,
+        alpha=0.35,
+        label="50%",
+    )
+    fill_between_with_contrast(
+        ax,
+        trials,
         min_trajectory,
         max_trajectory,
-        label="min-max",
+        alpha=0.35,
+        label="100%",
     )
 
-    ax.axhline(max_y, color="k", linestyle="-", label="True Maximum")
+    ax.axhline(max_y, color="k", linestyle="--", label="True Maximum")
     ax.axvline(n_initial, color="k", linestyle="-", label="Initial Samples")
 
     ax.set_xlabel("Number of Trials")

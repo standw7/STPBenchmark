@@ -3,7 +3,10 @@ import gpytorch
 from tqdm import trange
 from utils import TorchStandardScaler
 
-def train_variational_model(model, X, y, epochs=1000, lr=0.01, verbose=False, y_standardize=True):
+
+def train_variational_model(
+    model, X, y, epochs=100, lr=0.01, verbose=False, y_standardize=True
+):
 
     if y_standardize:
         y = TorchStandardScaler().fit_transform(y)
