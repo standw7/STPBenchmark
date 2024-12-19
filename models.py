@@ -93,7 +93,7 @@ class VarSTP(gpytorch.models.ApproximateGP):
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
-    def posterior(self, X, observation_noise=True, num_samples=512, **kwargs):
+    def posterior(self, X, observation_noise=True, num_samples=2048, **kwargs):
         """Compute the posterior distribution at test points X.
 
         Args:
@@ -188,7 +188,7 @@ class VarGP(ApproximateGP):
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
-    def posterior(self, X, observation_noise=True, num_samples=512, **kwargs):
+    def posterior(self, X, observation_noise=True, num_samples=2048, **kwargs):
         """Compute the posterior distribution at test points X.
 
         Args:
