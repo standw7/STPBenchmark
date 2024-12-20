@@ -1,7 +1,10 @@
 import torch
+import gpytorch
 import numpy as np
 from botorch.acquisition import LogExpectedImprovement
-from models import VarSTP, VarGP  # Assuming these are your model classes
+from gpytorch.likelihoods import GaussianLikelihood
+from optim import train_exact_model
+from models import VarSTP, VarGP, ExactGP  # Assuming these are your model classes
 from utils import set_seeds, get_initial_samples
 from optim import train_variational_model
 from tqdm import tqdm, trange
@@ -12,7 +15,7 @@ import warnings
 def run_single_loop(
     X: torch.Tensor,
     y: torch.Tensor,
-    model_class: Type[Union[VarSTP, VarGP]],
+    model_class: Type[Union[VarSTP, VarGP, ExactGP]],
     model_kwargs: Optional[dict] = None,
     n_initial: int = 10,
     n_trials: int = 25,
@@ -64,21 +67,45 @@ def run_single_loop(
 
     for _ in trange(n_trials):
         # Initialize and train model
-        if "inducing_points" in model_class.__init__.__code__.co_varnames:
-            model_kwargs["inducing_points"] = X_train
+        if model_class == ExactGP:
+            print("Initializing ExactGP model")
+            noise_prior = gpytorch.priors.LogNormalPrior(loc=-4.0, scale=1.0)
+            likelihood = GaussianLikelihood(
+                noise_prior=noise_prior,
+                noise_constraint=gpytorch.constraints.GreaterThan(
+                    1e-4,
+                    transform=None,
+                    initial_value=noise_prior.mode,
+                ),
+            )
+            model_kwargs["likelihood"] = likelihood
+            model = model_class(X_train, y_train, likelihood).double()
+            train_exact_model(
+                model, likelihood, X_train, y_train, epochs=epochs, lr=learning_rate
+            )
+        else:
+            if "inducing_points" in model_class.__init__.__code__.co_varnames:
+                model_kwargs["inducing_points"] = X_train
 
-        model = model_class(**model_kwargs).double()
-        train_variational_model(
-            model, X_train, y_train, epochs=epochs, lr=learning_rate
-        )
+            model = model_class(**model_kwargs).double()
+            train_variational_model(
+                model, X_train, y_train, epochs=epochs, lr=learning_rate
+            )
 
         # Get next point using LogExpectedImprovement
         model.eval()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            acq_values = LogExpectedImprovement(
-                model, best_f=y_train.max(), maximize=True
-            ).forward(X_candidate.unsqueeze(1))
+            if model_class == ExactGP:
+                predictions = model(X_candidate.unsqueeze(1))
+                mean = predictions.mean
+                variance = predictions.variance
+                acq_func = LogExpectedImprovement(model, best_f=y_train.max(), maximize=True)
+                acq_values = acq_func(X_candidate.unsqueeze(1))
+            else:
+                acq_values = LogExpectedImprovement(
+                    model, best_f=y_train.max(), maximize=True
+                ).forward(X_candidate.unsqueeze(1))
 
         # if observation noise, take mean of outputs
         if acq_values.ndim > 1:
@@ -113,7 +140,7 @@ def run_single_loop(
 def run_many_loops(
     X: torch.Tensor,
     y: torch.Tensor,
-    model_class: Type[Union[VarSTP, VarGP]],
+    model_class: Type[Union[VarSTP, VarGP, ExactGP]],
     seeds: List[int],
     **kwargs,  # To pass through to run_single_loop
 ) -> Dict[int, dict]:
@@ -141,6 +168,8 @@ def run_many_loops(
     # Run optimization with each seed
     for seed in tqdm(seeds, desc="Running optimization loops"):
         try:
+            if model_class == ExactGP:
+                kwargs["model_kwargs"] = {"X_train": X, "y_train": y}
             # Run single optimization loop with current seed
             results = run_single_loop(
                 X=X, y=y, model_class=model_class, seed=seed, **kwargs
