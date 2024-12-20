@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import pandas as pd
-from models import VarSTP, VarGP
+from models import VarSTP, VarGP, ExactGP
 import matplotlib.pyplot as plt
 from utils import TorchNormalizer
 from runners import run_many_loops
@@ -26,7 +26,7 @@ results = run_many_loops(
     n_trials=40,
     epochs=100,
     learning_rate=0.1,
-    model_class=VarSTP,
+    model_class=ExactGP,
 )
 
 # Create a figure to show optimization traces
