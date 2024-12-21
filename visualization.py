@@ -11,16 +11,17 @@ plt.rcParams.update({"font.size": 10})
 
 def plot_with_contrast(ax, x, y, color="maroon", thick_lw=3.2, thin_lw=2.0, label=None):
     """Creates a line plot with thick/thin contrast effect."""
-    ax.plot(x, y, color="black", lw=thick_lw)
-    ax.plot(x, y, color=color, lw=thin_lw, label=label)
+    ax.plot(x, y, color="black", lw=thick_lw, solid_capstyle="butt")
+    ax.plot(x, y, color=color, lw=thin_lw, solid_capstyle="butt", label=label)
 
 
 def fill_between_with_contrast(
     ax, x, y1, y2, color="maroon", alpha=0.5, label=None, edge_lw=1.0
 ):
     """Creates a fill-between with both solid fill and outlined edges."""
-    ax.fill_between(x, y1, y2, color=color, alpha=alpha, label=label)
-    ax.fill_between(x, y1, y2, fc="None", ec=color, lw=edge_lw)
+    ax.fill_between(x, y1, y2, color=color, alpha=alpha, label=label, lw=0)
+    ax.plot(x, y1, color=color, lw=edge_lw, solid_capstyle="butt")
+    ax.plot(x, y2, color=color, lw=edge_lw, solid_capstyle="butt")
 
 
 def plot_optimization_trace(
@@ -64,7 +65,7 @@ def plot_optimization_trace(
         p25_trajectory,
         p75_trajectory,
         alpha=0.35,
-        label="50%",
+        label="50% Interval",
     )
     fill_between_with_contrast(
         ax,
@@ -72,7 +73,7 @@ def plot_optimization_trace(
         p2_5_trajectory,
         p97_5_trajectory,
         alpha=0.35,
-        label="95%",
+        label="95% Interval",
     )
 
     ax.axhline(max_y, color="k", linestyle="--", label="True Maximum")

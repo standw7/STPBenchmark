@@ -21,9 +21,9 @@ seed_list = np.loadtxt("random_seeds.txt", dtype=int)
 results = run_many_loops(
     X,
     y,
-    seeds=seed_list[:25],
+    seeds=seed_list[:5],
     n_initial=10,
-    n_trials=40,
+    n_trials=15,
     epochs=100,
     learning_rate=0.1,
     model_class=VarSTP,
