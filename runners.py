@@ -1,7 +1,8 @@
 import torch
 import numpy as np
+
 from botorch.acquisition import LogExpectedImprovement
-from models import VarSTP, VarGP  # Assuming these are your model classes
+from models import VarSTP, VarGP
 from utils import set_seeds, get_initial_samples
 from optim import train_variational_model
 from tqdm import tqdm, trange
