@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import gpytorch
 from tqdm import trange
 
-from models import VarSTP, VarGP
+from gpytorch_models import VarSTP, VarGP
 from utils import set_seeds
 from optim import train_variational_model
 
