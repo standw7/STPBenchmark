@@ -3,8 +3,11 @@ import gpytorch
 from tqdm import trange
 from utils import TorchStandardScaler
 
-def train_exact_model(model, likelihood, X, y, epochs=100, lr=0.01, verbose=False, y_standardize=True):
-    
+
+def train_exact_model(
+    model, likelihood, X, y, epochs=100, lr=0.01, verbose=False, y_standardize=True
+):
+
     if y_standardize:
         y = TorchStandardScaler().fit_transform(y)
 
@@ -24,13 +27,9 @@ def train_exact_model(model, likelihood, X, y, epochs=100, lr=0.01, verbose=Fals
         loss.backward()
         optimizer.step()
 
-        # **Address Constraints During Training**
-        if (model.covar_module.base_kernel.lengthscale < 0).any():
-            print("Clamping invalid lengthscale values")
-            model.covar_module.base_kernel.lengthscale.data.clamp_(min=1e-4)
-
     if verbose:
         return loss_history
+
 
 def train_variational_model(
     model, X, y, epochs=100, lr=0.01, verbose=False, y_standardize=True

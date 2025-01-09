@@ -101,12 +101,16 @@ def run_single_loop(
                 mean = predictions.mean
                 variance = predictions.variance
                 acq_func = LogExpectedImprovement(
-                    model, best_f=y_train.max(), maximize=True
+                    model,
+                    best_f=y_train.max(),
+                    maximize=True,
                 )
                 acq_values = acq_func(X_candidate.unsqueeze(1))
             else:
                 acq_values = LogExpectedImprovement(
-                    model, best_f=y_train.max(), maximize=True
+                    model,
+                    best_f=y_train.max(),
+                    maximize=True,
                 ).forward(X_candidate.unsqueeze(1))
 
         # if observation noise, take mean of outputs

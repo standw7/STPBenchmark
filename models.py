@@ -56,9 +56,7 @@ class VarSTP(gpytorch.models.ApproximateGP):
         base_kernel = RBFKernel(
             ard_num_dims=input_dim,
             lengthscale_prior=lengthscale_prior,
-            lengthscale_constraint=GreaterThan(
-                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
-            ),
+            lengthscale_constraint=gpytorch.constraints.Positive(),
         )
 
         # Kernel with outputscale prior
@@ -152,9 +150,7 @@ class VarGP(ApproximateGP):
         base_kernel = RBFKernel(
             ard_num_dims=input_dim,
             lengthscale_prior=lengthscale_prior,
-            lengthscale_constraint=GreaterThan(
-                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
-            ),
+            lengthscale_constraint=gpytorch.constraints.Positive(),
         )
 
         # Kernel with outputscale prior
@@ -248,9 +244,7 @@ class ExactGP(gpytorch.models.ExactGP):
         base_kernel = gpytorch.kernels.RBFKernel(
             ard_num_dims=input_dim,
             lengthscale_prior=lengthscale_prior,
-            lengthscale_constraint=gpytorch.constraints.GreaterThan(
-                2.5e-4, transform=None, initial_value=lengthscale_prior.mode
-            ),
+            lengthscale_constraint=gpytorch.constraints.Positive(),
         )
 
         # Kernel with outputscale prior
