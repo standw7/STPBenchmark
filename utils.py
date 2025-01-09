@@ -148,8 +148,22 @@ def initial_points(x, y, num_initial_points):
     return x_initial, y_initial
 
 
-def get_initial_samples(y, n_samples, percentile=95):
-    # Get the threshold value for the given percentile
+def get_initial_samples(
+    y: torch.Tensor, n_samples: int, percentile: float = 95
+) -> torch.Tensor:
+    """Randomly samples indices from values below a percentile threshold in a PyTorch tensor.
+
+    Args:
+        y: Input tensor of values to sample from
+        n_samples: Number of indices to sample
+        percentile: Upper percentile threshold for eligible values (default: 95)
+
+    Returns:
+        Tensor of randomly sampled indices where values are below the percentile threshold
+
+    Raises:
+        ValueError: If requested sample size exceeds number of eligible values
+    """
     threshold = torch.quantile(y, percentile / 100)
 
     # Get indices where y is below the threshold

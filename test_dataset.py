@@ -23,10 +23,10 @@ results = run_many_loops(
     y,
     seeds=seed_list[:5],
     n_initial=10,
-    n_trials=15,
+    n_trials=75,
     epochs=100,
     learning_rate=0.1,
-    model_class=ExactGP,
+    model_class=VarSTP,
 )
 
 # Create a figure to show optimization traces

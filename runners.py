@@ -69,7 +69,6 @@ def run_single_loop(
     for _ in trange(n_trials):
         # Initialize and train model
         if model_class == ExactGP:
-            print("Initializing ExactGP model")
             noise_prior = gpytorch.priors.LogNormalPrior(loc=-4.0, scale=1.0)
             likelihood = GaussianLikelihood(
                 noise_prior=noise_prior,
@@ -101,7 +100,9 @@ def run_single_loop(
                 predictions = model(X_candidate.unsqueeze(1))
                 mean = predictions.mean
                 variance = predictions.variance
-                acq_func = LogExpectedImprovement(model, best_f=y_train.max(), maximize=True)
+                acq_func = LogExpectedImprovement(
+                    model, best_f=y_train.max(), maximize=True
+                )
                 acq_values = acq_func(X_candidate.unsqueeze(1))
             else:
                 acq_values = LogExpectedImprovement(
