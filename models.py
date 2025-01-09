@@ -216,25 +216,25 @@ class ExactGP(gpytorch.models.ExactGP):
         Expects inputs to be normalized to [0,1] and outputs to be standardized.
     """
 
-    def __init__(self, x_train, y_train):
+    def __init__(self, x_train, y_train, likelihood):
         """Initialize model with training data.
 
         Args:
             x_train: Training inputs, shape (n_samples, n_features)
             y_train: Training targets, shape (n_samples,)
         """
-        # Setup likelihood with BoTorch-style noise prior
-        noise_prior = gpytorch.priors.LogNormalPrior(loc=-4.0, scale=1.0)
-        self.likelihood = GaussianLikelihood(
-            noise_prior=noise_prior,
-            noise_constraint=gpytorch.constraints.GreaterThan(
-                1e-4,
-                transform=None,
-                initial_value=noise_prior.mode,
-            ),
-        )
+        # # Setup likelihood with BoTorch-style noise prior
+        # noise_prior = gpytorch.priors.LogNormalPrior(loc=-4.0, scale=1.0)
+        # self.likelihood = GaussianLikelihood(
+        #     noise_prior=noise_prior,
+        #     noise_constraint=gpytorch.constraints.GreaterThan(
+        #         1e-4,
+        #         transform=None,
+        #         initial_value=noise_prior.mode,
+        #     ),
+        # )
 
-        super(ExactGP, self).__init__(x_train, y_train, self.likelihood)
+        super(ExactGP, self).__init__(x_train, y_train, likelihood)
 
         # Mean and covariance setup with dimensionality-aware priors
         self.mean_module = gpytorch.means.ConstantMean()
@@ -249,7 +249,7 @@ class ExactGP(gpytorch.models.ExactGP):
             ard_num_dims=input_dim,
             lengthscale_prior=lengthscale_prior,
             lengthscale_constraint=gpytorch.constraints.GreaterThan(
-                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
+                2.5e-4, transform=None, initial_value=lengthscale_prior.mode
             ),
         )
 
@@ -263,7 +263,6 @@ class ExactGP(gpytorch.models.ExactGP):
             ),
         )
 
-        self.objective_function = ExactMarginalLogLikelihood(self.likelihood, self)
         self.num_outputs = 1
 
     def forward(self, x):
@@ -271,3 +270,13 @@ class ExactGP(gpytorch.models.ExactGP):
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+    def posterior(self, X, observation_noise=True, num_samples=2048, **kwargs):
+        """Compute the posterior distribution."""
+        self.eval()
+        with torch.no_grad(), gpytorch.settings.fast_pred_var():
+            if observation_noise:
+                posterior = self.likelihood(self(X))
+            else:
+                posterior = self(X)
+            return posterior
