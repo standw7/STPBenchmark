@@ -1,6 +1,7 @@
 import torch
 import gpytorch
 import numpy as np
+
 from botorch.acquisition import LogExpectedImprovement
 from gpytorch.likelihoods import GaussianLikelihood
 from optim import train_exact_model
