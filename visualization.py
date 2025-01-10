@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from typing import Dict
 import pandas as pd
+import matplotlib.patheffects as pe
 
 import matplotlib.pyplot as plt
 
@@ -25,14 +26,28 @@ def fill_between_with_contrast(
     ax.plot(x, y2, color=color, lw=edge_lw, solid_capstyle="butt")
 
 
+def dummy_legend(ax):
+    """Add a dummy legend to the plot."""
+    ax.plot(
+        [],
+        [],
+        color="grey",
+        lw=2,
+        label="Median",
+        path_effects=[pe.withStroke(linewidth=3.2, foreground="black")],
+    )
+    ax.fill_between([], [], [], color="grey", alpha=0.35, label="50% Interval")
+    ax.fill_between([], [], [], color="grey", alpha=0.35, label="95% Interval")
+    return ax.legend(framealpha=1.0, edgecolor="black", facecolor="white")
+
+
 def plot_optimization_trace(
     ax,
     results_df: pd.DataFrame,  # Changed from Dict to DataFrame
-    max_y: float,
     n_initial: int = 10,
     color: str = "maroon",
     maximize: bool = True,
-    show_legend: bool = False,
+    label: bool = False,
 ) -> None:
     """
     Plot optimization results across multiple runs showing mean and uncertainty bands.
@@ -62,14 +77,16 @@ def plot_optimization_trace(
     p2_5_trajectory = np.percentile(all_trajectories, 2.5, axis=1)
     p97_5_trajectory = np.percentile(all_trajectories, 97.5, axis=1)
 
-    plot_with_contrast(ax, trials, median_trajectory, label="Median", color=color)
+    plot_with_contrast(
+        ax, trials, median_trajectory, label="Median" if label else None, color=color
+    )
     fill_between_with_contrast(
         ax,
         trials,
         p25_trajectory,
         p75_trajectory,
         alpha=0.35,
-        label="50% Interval",
+        label="50% Interval" if label else None,
         color=color,
     )
     fill_between_with_contrast(
@@ -78,50 +95,52 @@ def plot_optimization_trace(
         p2_5_trajectory,
         p97_5_trajectory,
         alpha=0.35,
-        label="95% Interval",
+        label="95% Interval" if label else None,
         color=color,
     )
 
-    ax.axhline(max_y, color="k", linestyle="--", label="True Maximum")
-    ax.axvline(n_initial, color="k", linestyle="-", label="Initial Samples")
+    ax.axvline(
+        n_initial, color="k", linestyle="-", label="Initial Samples" if label else None
+    )
 
     ax.set_xlabel("Number of Trials")
     ax.set_ylabel("Best Value Found")
-    if show_legend:
-        ax.legend(framealpha=1.0, edgecolor="black", facecolor="white")
 
 
 def plot_top_values_discovery(
     ax,
-    all_results: Dict[int, dict],
+    results_df: pd.DataFrame,
     y: torch.Tensor,
     top_percent: float = 5.0,
     n_initial: int = 10,
+    color: str = "maroon",
+    label: bool = False,
 ) -> None:
     """
     Plot the percentage of top values discovered over optimization iterations.
 
     Args:
         ax: Matplotlib axis to plot on
-        all_results: Dictionary mapping seeds to their results dictionaries
+        results_df: DataFrame where each column represents a random seed's optimization trace
         y: Original target values tensor to determine threshold
         top_percent: Percentage threshold for considering top values (default: 5%)
         n_initial: Number of initial samples for vertical line
+        color: Color to use for plotting (default: "maroon")
+        label: Whether to add labels to the plot elements (default: False)
     """
-    # Convert threshold calculation to use PyTorch
+    # Calculate threshold using PyTorch
     k = int(len(y) * (1 - top_percent / 100))
-    threshold = torch.kthvalue(y, k)[0].item()
-    n_top_total = torch.sum(y >= threshold).item()
+    threshold = np.partition(y, k)[k]
+    n_top_total = np.sum(y >= threshold)
 
-    # Get number of trials from first result
-    n_trials = len(next(iter(all_results.values()))["y_selected"])
+    # Get number of trials from DataFrame length
+    n_trials = len(results_df)
     trials = np.arange(1, n_trials + 1)
 
-    # Calculate discovery trajectories for each seed
+    # Calculate discovery trajectories for each seed (column)
     all_trajectories = []
-    for results in all_results.values():
-        # Count cumulative unique discoveries above threshold
-        selected_values = results["y_selected"]
+    for col in results_df.columns:
+        selected_values = results_df[col].values
         cumulative_found = np.zeros(n_trials)
 
         unique_values = set()
@@ -134,40 +153,51 @@ def plot_top_values_discovery(
         trajectory = (cumulative_found / n_top_total) * 100
         all_trajectories.append(trajectory)
 
+    # Convert to numpy array for calculations
+    all_trajectories = np.array(
+        all_trajectories
+    ).T  # Transpose to match plot_optimization_trace
+
     # Calculate statistics across seeds
-    all_trajectories = np.array(all_trajectories)
-    median_trajectory = np.median(all_trajectories, axis=0)
-    p25_trajectory = np.percentile(all_trajectories, 25, axis=0)
-    p75_trajectory = np.percentile(all_trajectories, 75, axis=0)
-    p2_5_trajectory = np.percentile(all_trajectories, 2.5, axis=0)
-    p97_5_trajectory = np.percentile(all_trajectories, 97.5, axis=0)
+    median_trajectory = np.median(all_trajectories, axis=1)
+    p25_trajectory = np.percentile(all_trajectories, 25, axis=1)
+    p75_trajectory = np.percentile(all_trajectories, 75, axis=1)
+    p2_5_trajectory = np.percentile(all_trajectories, 2.5, axis=1)
+    p97_5_trajectory = np.percentile(all_trajectories, 97.5, axis=1)
 
     # Plot using existing style functions
     plot_with_contrast(
-        ax, trials, median_trajectory, label=f"Median (top {top_percent}%)"
+        ax,
+        trials,
+        median_trajectory,
+        color=color,
+        label=f"Median (top {top_percent}%)" if label else None,
     )
     fill_between_with_contrast(
         ax,
         trials,
         p25_trajectory,
         p75_trajectory,
+        color=color,
         alpha=0.35,
-        label="50%",
+        label="50% Interval" if label else None,
     )
     fill_between_with_contrast(
         ax,
         trials,
         p2_5_trajectory,
         p97_5_trajectory,
+        color=color,
         alpha=0.35,
-        label="95%",
+        label="95% Interval" if label else None,
     )
 
-    # Add reference lines
-    ax.axvline(n_initial, color="k", linestyle="-", label="Initial Samples")
+    # Add reference line for initial samples
+    ax.axvline(
+        n_initial, color="k", linestyle="-", label="Initial Samples" if label else None
+    )
 
     # Customize plot
     ax.set_xlabel("Number of Trials")
     ax.set_ylabel(f"% of Top {top_percent}% Values Found")
     ax.set_ylim(0, 100)
-    ax.legend(framealpha=1.0, edgecolor="black", facecolor="white")

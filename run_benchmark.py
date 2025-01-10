@@ -51,7 +51,7 @@ for model_name, model_class in zip(model_names, model_classes):
             seeds=seed_list[:3],
             n_initial=10,
             n_trials=90,
-            epochs=200,
+            epochs=300,
             learning_rate=0.05,
         )
 
