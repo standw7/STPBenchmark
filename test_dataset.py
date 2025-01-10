@@ -8,7 +8,7 @@ from runners import run_many_loops, run_single_loop
 from visualization import plot_optimization_trace, plot_top_values_discovery
 
 # Load and preprocess data
-dataset = "CrossedBarrel_dataset.csv"
+dataset = "AutoAM_dataset.csv"
 data = np.loadtxt(f"data/{dataset}", delimiter=",", skiprows=1)
 
 # average duplicate feature entries
@@ -27,15 +27,15 @@ X = TorchNormalizer().fit_transform(X)
 
 seed_list = np.loadtxt("random_seeds.txt", dtype=int)
 
-results = run_many_loops(
+results = run_single_loop(
     X,
     y,
-    seeds=seed_list[:2],
-    n_initial=10,
-    n_trials=25,
+    seed=45,
+    n_initial=95,
+    n_trials=5,
     epochs=200,
     learning_rate=0.05,
-    model_class=ExactGP,
+    model_class=VarSTP,
 )
 
 # Create a figure to show optimization traces

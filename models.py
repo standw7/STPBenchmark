@@ -7,12 +7,11 @@ from gpytorch.variational import CholeskyVariationalDistribution, VariationalStr
 from gpytorch.means import ConstantMean
 from gpytorch.kernels import ScaleKernel, RBFKernel
 from gpytorch.likelihoods import GaussianLikelihood
-from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.priors import LogNormalPrior
 from gpytorch.constraints import GreaterThan
 
 
-class VarSTP(gpytorch.models.ApproximateGP):
+class VarTGP(gpytorch.models.ApproximateGP):
     """Variational Gaussian Process with Student-T likelihood for heavy-tailed observations.
 
     Uses variational inference with inducing points for scalability and a Student-T
@@ -42,7 +41,7 @@ class VarSTP(gpytorch.models.ApproximateGP):
             variational_distribution,
             learn_inducing_locations=True,  # Learn inducing points
         )
-        super(VarSTP, self).__init__(variational_strategy)
+        super(VarTGP, self).__init__(variational_strategy)
 
         # Mean and covariance setup with dimensionality-aware priors
         self.mean_module = ConstantMean()
@@ -56,7 +55,9 @@ class VarSTP(gpytorch.models.ApproximateGP):
         base_kernel = RBFKernel(
             ard_num_dims=input_dim,
             lengthscale_prior=lengthscale_prior,
-            lengthscale_constraint=gpytorch.constraints.Positive(),
+            lengthscale_constraint=GreaterThan(
+                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
+            ),
         )
 
         # Kernel with outputscale prior
@@ -101,6 +102,7 @@ class VarSTP(gpytorch.models.ApproximateGP):
         Returns:
             MultivariateNormal distribution at test locations
         """
+        self.num_likelihood_samples = num_samples
         self.eval()
         with torch.no_grad(), gpytorch.settings.num_likelihood_samples(num_samples):
             posterior = self(X)
@@ -150,9 +152,10 @@ class VarGP(ApproximateGP):
         base_kernel = RBFKernel(
             ard_num_dims=input_dim,
             lengthscale_prior=lengthscale_prior,
-            lengthscale_constraint=gpytorch.constraints.Positive(),
+            lengthscale_constraint=GreaterThan(
+                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
+            ),
         )
-
         # Kernel with outputscale prior
         outputscale_prior = LogNormalPrior(loc=0.0, scale=1.0)
         self.covar_module = ScaleKernel(

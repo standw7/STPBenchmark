@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from typing import Dict
+import pandas as pd
 
 import matplotlib.pyplot as plt
 
@@ -25,40 +26,43 @@ def fill_between_with_contrast(
 
 
 def plot_optimization_trace(
-    ax,  # Now we pass in the axis instead of creating it
-    all_results: Dict[int, dict],
+    ax,
+    results_df: pd.DataFrame,  # Changed from Dict to DataFrame
     max_y: float,
     n_initial: int = 10,
-) -> None:  # Return type changes since we're not returning fig, ax
+    color: str = "maroon",
+    maximize: bool = True,
+    show_legend: bool = False,
+) -> None:
     """
     Plot optimization results across multiple runs showing mean and uncertainty bands.
 
     Args:
         ax: Matplotlib axis to plot on
-        all_results: Dictionary mapping seeds to their results dictionaries
+        results_df: DataFrame where each column represents a random seed's optimization trace
         max_y: True maximum value in dataset for reference line
         n_initial: Number of initial samples for vertical line
     """
-    # Remove figure creation since we're using passed axis
-
-    # Rest of the function stays the same, just use the passed ax
-    n_trials = len(next(iter(all_results.values()))["y_selected"])
+    # Get number of trials from DataFrame length
+    n_trials = len(results_df)
     trials = np.arange(1, n_trials + 1)
 
-    all_trajectories = []
-    for results in all_results.values():
-        trajectory = np.maximum.accumulate(results["y_selected"])
-        all_trajectories.append(trajectory)
+    # Convert DataFrame to numpy array for calculations
+    # Each column becomes a trajectory
+    if maximize:
+        all_trajectories = np.maximum.accumulate(results_df.values, axis=0)
+    else:
+        all_trajectories = np.minimum.accumulate(results_df.values, axis=0)
 
-    all_trajectories = np.array(all_trajectories)
-    mean_trajectory = np.mean(all_trajectories, axis=0)
-    median_trajectory = np.median(all_trajectories, axis=0)
-    p25_trajectory = np.percentile(all_trajectories, 25, axis=0)
-    p75_trajectory = np.percentile(all_trajectories, 75, axis=0)
-    p2_5_trajectory = np.percentile(all_trajectories, 2.5, axis=0)
-    p97_5_trajectory = np.percentile(all_trajectories, 97.5, axis=0)
+    # Calculate statistics across seeds (axis=1 because now seeds are columns)
+    mean_trajectory = np.mean(all_trajectories, axis=1)
+    median_trajectory = np.median(all_trajectories, axis=1)
+    p25_trajectory = np.percentile(all_trajectories, 25, axis=1)
+    p75_trajectory = np.percentile(all_trajectories, 75, axis=1)
+    p2_5_trajectory = np.percentile(all_trajectories, 2.5, axis=1)
+    p97_5_trajectory = np.percentile(all_trajectories, 97.5, axis=1)
 
-    plot_with_contrast(ax, trials, median_trajectory, label="Median")
+    plot_with_contrast(ax, trials, median_trajectory, label="Median", color=color)
     fill_between_with_contrast(
         ax,
         trials,
@@ -66,6 +70,7 @@ def plot_optimization_trace(
         p75_trajectory,
         alpha=0.35,
         label="50% Interval",
+        color=color,
     )
     fill_between_with_contrast(
         ax,
@@ -74,6 +79,7 @@ def plot_optimization_trace(
         p97_5_trajectory,
         alpha=0.35,
         label="95% Interval",
+        color=color,
     )
 
     ax.axhline(max_y, color="k", linestyle="--", label="True Maximum")
@@ -81,7 +87,8 @@ def plot_optimization_trace(
 
     ax.set_xlabel("Number of Trials")
     ax.set_ylabel("Best Value Found")
-    ax.legend(framealpha=1.0, edgecolor="black", facecolor="white")
+    if show_legend:
+        ax.legend(framealpha=1.0, edgecolor="black", facecolor="white")
 
 
 def plot_top_values_discovery(

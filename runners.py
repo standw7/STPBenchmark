@@ -70,7 +70,7 @@ def run_single_loop(
     if len(X) - n_initial < n_trials:
         n_trials = len(X) - n_initial
 
-    for _ in trange(n_trials):
+    for trial in trange(n_trials):
         # Initialize and train model
         if "inducing_points" in model_class.__init__.__code__.co_varnames:
             model_kwargs["inducing_points"] = X_train
@@ -83,10 +83,7 @@ def run_single_loop(
         model = model_class(**model_kwargs).double()
 
         if model_class == ExactGP:
-            # train_exact_model(model, X_train, y_train, epochs=epochs, lr=learning_rate)
-            train_exact_model_botorch(
-                model, X_train, y_train, epochs=epochs, lr=learning_rate
-            )
+            train_exact_model_botorch(model, X_train, y_train)
         else:
             train_variational_model(
                 model, X_train, y_train, epochs=epochs, lr=learning_rate
@@ -100,8 +97,8 @@ def run_single_loop(
                 model, best_f=y_train.max(), maximize=True
             ).forward(X_candidate.unsqueeze(1))
 
-        # if observation noise, take mean of outputs
-        if acq_values.ndim > 1:
+        # if variational samples are drawn, average over them
+        if hasattr(model, "num_likelihood_samples"):
             acq_values = torch.mean(acq_values, dim=0)
 
         best_idx = torch.argmax(acq_values)
