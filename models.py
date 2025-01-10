@@ -7,12 +7,11 @@ from gpytorch.variational import CholeskyVariationalDistribution, VariationalStr
 from gpytorch.means import ConstantMean
 from gpytorch.kernels import ScaleKernel, RBFKernel
 from gpytorch.likelihoods import GaussianLikelihood
-from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.priors import LogNormalPrior
 from gpytorch.constraints import GreaterThan
 
 
-class VarSTP(gpytorch.models.ApproximateGP):
+class VarTGP(gpytorch.models.ApproximateGP):
     """Variational Gaussian Process with Student-T likelihood for heavy-tailed observations.
 
     Uses variational inference with inducing points for scalability and a Student-T
@@ -42,7 +41,7 @@ class VarSTP(gpytorch.models.ApproximateGP):
             variational_distribution,
             learn_inducing_locations=True,  # Learn inducing points
         )
-        super(VarSTP, self).__init__(variational_strategy)
+        super(VarTGP, self).__init__(variational_strategy)
 
         # Mean and covariance setup with dimensionality-aware priors
         self.mean_module = ConstantMean()
@@ -103,6 +102,7 @@ class VarSTP(gpytorch.models.ApproximateGP):
         Returns:
             MultivariateNormal distribution at test locations
         """
+        self.num_likelihood_samples = num_samples
         self.eval()
         with torch.no_grad(), gpytorch.settings.num_likelihood_samples(num_samples):
             posterior = self(X)
@@ -156,7 +156,6 @@ class VarGP(ApproximateGP):
                 2.5e-2, transform=None, initial_value=lengthscale_prior.mode
             ),
         )
-
         # Kernel with outputscale prior
         outputscale_prior = LogNormalPrior(loc=0.0, scale=1.0)
         self.covar_module = ScaleKernel(
@@ -207,7 +206,7 @@ class VarGP(ApproximateGP):
 
 
 class ExactGP(gpytorch.models.ExactGP):
-    """Exact GP regression with BoTorch-style priors.
+    """Exact GP regression with BoTorch-style priors and input transforms.
 
     Uses exact inference (suitable for moderate dataset sizes) with dimensionality-aware
     priors from BoTorch. Includes priors on lengthscales, outputscale, and noise.
@@ -216,30 +215,33 @@ class ExactGP(gpytorch.models.ExactGP):
         Expects inputs to be normalized to [0,1] and outputs to be standardized.
     """
 
-    def __init__(self, x_train, y_train, likelihood):
+    def __init__(self, X_train, y_train, input_transform=None):
         """Initialize model with training data.
 
         Args:
             x_train: Training inputs, shape (n_samples, n_features)
             y_train: Training targets, shape (n_samples,)
+            input_transform: Optional transform to apply to inputs
         """
-        # # Setup likelihood with BoTorch-style noise prior
-        # noise_prior = gpytorch.priors.LogNormalPrior(loc=-4.0, scale=1.0)
-        # self.likelihood = GaussianLikelihood(
-        #     noise_prior=noise_prior,
-        #     noise_constraint=gpytorch.constraints.GreaterThan(
-        #         1e-4,
-        #         transform=None,
-        #         initial_value=noise_prior.mode,
-        #     ),
-        # )
+        # Setup likelihood with BoTorch-style noise prior
+        noise_prior = gpytorch.priors.LogNormalPrior(loc=-4.0, scale=1.0)
+        likelihood = GaussianLikelihood(
+            noise_prior=noise_prior,
+            noise_constraint=gpytorch.constraints.GreaterThan(
+                1e-4,
+                transform=None,
+                initial_value=noise_prior.mode,
+            ),
+        )
 
-        super(ExactGP, self).__init__(x_train, y_train, likelihood)
+        super(ExactGP, self).__init__(X_train, y_train, likelihood)
+
+        self.input_transform = input_transform
 
         # Mean and covariance setup with dimensionality-aware priors
         self.mean_module = gpytorch.means.ConstantMean()
 
-        input_dim = x_train.shape[1]
+        input_dim = X_train.shape[1]
 
         lengthscale_prior = gpytorch.priors.LogNormalPrior(
             loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
@@ -248,8 +250,8 @@ class ExactGP(gpytorch.models.ExactGP):
         base_kernel = gpytorch.kernels.RBFKernel(
             ard_num_dims=input_dim,
             lengthscale_prior=lengthscale_prior,
-            lengthscale_constraint=gpytorch.constraints.GreaterThan(
-                2.5e-4, transform=None, initial_value=lengthscale_prior.mode
+            lengthscale_constraint=GreaterThan(
+                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
             ),
         )
 
@@ -265,8 +267,27 @@ class ExactGP(gpytorch.models.ExactGP):
 
         self.num_outputs = 1
 
+    def transform_inputs(self, X=None, input_transform=None):
+        """Transform inputs using the input transform if it exists.
+
+        Args:
+            X: The input tensor to transform
+            input_transform: Optional transform to override the model's transform
+        """
+        if X is None:
+            raise ValueError("X must be provided")
+
+        transform = (
+            input_transform if input_transform is not None else self.input_transform
+        )
+        if transform is not None:
+            return transform(X)
+        return X
+
     def forward(self, x):
         """Compute the prior distribution at input locations x."""
+        if self.training:
+            x = self.transform_inputs(x)
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)

@@ -7,7 +7,7 @@ from gpytorch.likelihoods import GaussianLikelihood
 from optim import train_exact_model
 from models import VarSTP, VarGP, ExactGP  # Assuming these are your model classes
 from utils import set_seeds, get_initial_samples
-from optim import train_variational_model
+from optim import train_variational_model, train_exact_model, train_exact_model_botorch
 from tqdm import tqdm, trange
 from typing import Type, Union, Optional, List, Dict
 import warnings
@@ -66,28 +66,25 @@ def run_single_loop(
     X_candidate = X[mask]
     y_candidate = y[mask]
 
-    for _ in trange(n_trials):
-        # Initialize and train model
-        if model_class == ExactGP:
-            noise_prior = gpytorch.priors.LogNormalPrior(loc=-4.0, scale=1.0)
-            likelihood = GaussianLikelihood(
-                noise_prior=noise_prior,
-                noise_constraint=gpytorch.constraints.GreaterThan(
-                    1e-4,
-                    transform=None,
-                    initial_value=noise_prior.mode,
-                ),
-            )
-            model_kwargs["likelihood"] = likelihood
-            model = model_class(X_train, y_train, likelihood).double()
-            train_exact_model(
-                model, likelihood, X_train, y_train, epochs=epochs, lr=learning_rate
-            )
-        else:
-            if "inducing_points" in model_class.__init__.__code__.co_varnames:
-                model_kwargs["inducing_points"] = X_train
+    # if there are more trials than data points, reduce number of trials
+    if len(X) - n_initial < n_trials:
+        n_trials = len(X) - n_initial
 
-            model = model_class(**model_kwargs).double()
+    for trial in trange(n_trials):
+        # Initialize and train model
+        if "inducing_points" in model_class.__init__.__code__.co_varnames:
+            model_kwargs["inducing_points"] = X_train
+
+        if model_class == ExactGP:
+            model_kwargs["X_train"] = X_train
+            model_kwargs["y_train"] = y_train
+            model_kwargs["input_transform"] = None
+
+        model = model_class(**model_kwargs).double()
+
+        if model_class == ExactGP:
+            train_exact_model_botorch(model, X_train, y_train)
+        else:
             train_variational_model(
                 model, X_train, y_train, epochs=epochs, lr=learning_rate
             )
@@ -96,21 +93,12 @@ def run_single_loop(
         model.eval()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            if model_class == ExactGP:
-                predictions = model(X_candidate.unsqueeze(1))
-                mean = predictions.mean
-                variance = predictions.variance
-                acq_func = LogExpectedImprovement(
-                    model, best_f=y_train.max(), maximize=True
-                )
-                acq_values = acq_func(X_candidate.unsqueeze(1))
-            else:
-                acq_values = LogExpectedImprovement(
-                    model, best_f=y_train.max(), maximize=True
-                ).forward(X_candidate.unsqueeze(1))
+            acq_values = LogExpectedImprovement(
+                model, best_f=y_train.max(), maximize=True
+            ).forward(X_candidate.unsqueeze(1))
 
-        # if observation noise, take mean of outputs
-        if acq_values.ndim > 1:
+        # if variational samples are drawn, average over them
+        if hasattr(model, "num_likelihood_samples"):
             acq_values = torch.mean(acq_values, dim=0)
 
         best_idx = torch.argmax(acq_values)
@@ -180,7 +168,5 @@ def run_many_loops(
         except Exception as e:
             print(f"Error encountered for seed {seed}: {e}")
             print("Continung with next seed...")
-
-        # Store results for this seed
 
     return all_results
