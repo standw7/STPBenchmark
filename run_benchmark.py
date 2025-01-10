@@ -10,10 +10,10 @@ from runners import run_many_loops
 from visualization import plot_optimization_trace, plot_top_values_discovery
 
 datasets = os.listdir("data")  # pull in the benchmark sets
-model_classes = [VarSTP, VarGP, ExactGP]
-# model_classes = [VarGP]
-model_names = ["VarSTP", "VarGP", "ExactGP"]
-# model_names = ["VarGP"]
+# model_classes = [VarSTP, VarGP, ExactGP]
+model_classes = [ExactGP]
+# model_names = ["VarSTP", "VarGP", "ExactGP"]
+model_names = ["ExactGP"]
 for model_name, model_class in zip(model_names, model_classes):
     for dataset in datasets:
 
@@ -32,8 +32,7 @@ for model_name, model_class in zip(model_names, model_classes):
             print(f"\nInverting {dataset[:-4]} target values for maximization problem")
             y = 1.0 / y
 
-        normalizer = TorchNormalizer()
-        X = normalizer.fit_transform(X)
+        X = TorchNormalizer().fit_transform(X)
 
         seed_list = np.loadtxt("random_seeds.txt", dtype=int)
 
@@ -42,11 +41,12 @@ for model_name, model_class in zip(model_names, model_classes):
         results = run_many_loops(
             X,
             y,
-            seeds=seed_list[:2],
+            # seeds=seed_list[:3],
+            seeds=[6185],
             n_initial=10,
-            n_trials=15,
-            epochs=100,
-            learning_rate=0.1,
+            n_trials=90,
+            epochs=200,
+            learning_rate=0.05,
             model_class=model_class,
         )
 
