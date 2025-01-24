@@ -6,7 +6,7 @@ from models import VarTGP, VarGP, ExactGP
 from utils import TorchNormalizer, preprocess_data
 from runners import run_many_loops
 
-SMOKE_TEST = True
+SMOKE_TEST = True  # run reduced benchmark for testing purposes
 
 seed_list = np.loadtxt("random_seeds.txt", dtype=int)
 datasets = os.listdir("data")  # pull in the benchmark sets
@@ -22,9 +22,6 @@ for model_name, model_class in zip(model_names, model_classes):
 
         # invert y values for datasets that are minimization problems
         if dataset in ["Perovskite_dataset.csv", "AgNP_dataset.csv"]:
-            print(
-                f"\n[INFO] Inverting {dataset[:-4]} target values for maximization problem"
-            )
             y = 1.0 / y
 
         print(f"\nRunning {model_name} on {dataset} dataset")

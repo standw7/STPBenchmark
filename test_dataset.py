@@ -67,11 +67,9 @@ def run_benchmark(
     # Plotting
 
     # Optimization traces
-    fig, ax = plt.subplots(
-        1, 2, figsize=(6, 4), dpi=200, width_ratios=[8, 1], sharey=True
-    )
+    fig, ax = plt.subplots(1, 2, figsize=(6, 4), width_ratios=[8, 1], sharey=True)
 
-    plot_optimization_trace(ax[0], traces_df, color="green")
+    plot_optimization_trace(ax[0], traces_df, color="#003f5c")
     ax[0].axvline(n_initial, color="black", linestyle="--")
 
     ax[1].scatter([0] * len(y_np), y_np, color="black", marker="o", s=10, alpha=0.5)
@@ -84,9 +82,9 @@ def run_benchmark(
     plt.show(block=False)
 
     # Top values discovery
-    fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
+    fig, ax = plt.subplots(figsize=(6, 4))
 
-    plot_top_values_discovery(ax, traces_df, y_np, top_percent=5.0, color="green")
+    plot_top_values_discovery(ax, traces_df, y_np, top_percent=5.0, color="#003f5c")
     ax.axvline(n_initial, color="black", linestyle="--")
 
     ax.set_xlabel("Iteration")
