@@ -18,7 +18,7 @@ def plot_with_contrast(ax, x, y, color="maroon", thick_lw=3.2, thin_lw=2.0, labe
 
 
 def fill_between_with_contrast(
-    ax, x, y1, y2, color="maroon", alpha=0.5, label=None, edge_lw=1.0
+    ax, x, y1, y2, color="maroon", alpha=0.5, label=None, edge_lw=0.5
 ):
     """Creates a fill-between with both solid fill and outlined edges."""
     ax.fill_between(x, y1, y2, color=color, alpha=alpha, label=label, lw=0)
@@ -26,178 +26,141 @@ def fill_between_with_contrast(
     ax.plot(x, y2, color=color, lw=edge_lw, solid_capstyle="butt")
 
 
-def dummy_legend(ax):
-    """Add a dummy legend to the plot."""
-    ax.plot(
-        [],
-        [],
-        color="grey",
-        lw=2,
-        label="Median",
-        path_effects=[pe.withStroke(linewidth=3.2, foreground="black")],
-    )
-    ax.fill_between([], [], [], color="grey", alpha=0.35, label="50% Interval")
-    ax.fill_between([], [], [], color="grey", alpha=0.35, label="95% Interval")
-    return ax.legend(framealpha=1.0, edgecolor="black", facecolor="white")
-
-
 def plot_optimization_trace(
     ax,
-    results_df: pd.DataFrame,  # Changed from Dict to DataFrame
-    n_initial: int = 10,
+    traces: pd.DataFrame,
     color: str = "maroon",
     maximize: bool = True,
-    label: bool = False,
+    label: str = None,
+    full_legend: bool = True,
+    legend_kwargs: dict = None,
 ) -> None:
     """
-    Plot optimization results across multiple runs showing mean and uncertainty bands.
+    Plot optimization results across multiple runs showing median and uncertainty bands.
 
     Args:
         ax: Matplotlib axis to plot on
-        results_df: DataFrame where each column represents a random seed's optimization trace
-        max_y: True maximum value in dataset for reference line
-        n_initial: Number of initial samples for vertical line
+        traces: DataFrame where each column represents an optimization trace
+        color: Color to use for the plot elements
+        maximize: If True, show best maximum found. If False, show best minimum found
+        show_legend: Whether to show the legend
+        legend_kwargs: Additional keyword arguments for legend customization
     """
-    # Get number of trials from DataFrame length
-    n_trials = len(results_df)
-    trials = np.arange(1, n_trials + 1)
+    # Default legend settings
+    legend_kwargs = legend_kwargs or {
+        "framealpha": 1.0,
+        "edgecolor": "black",
+        "facecolor": "white",
+        "loc": "best",
+    }
 
-    # Convert DataFrame to numpy array for calculations
-    # Each column becomes a trajectory
-    if maximize:
-        all_trajectories = np.maximum.accumulate(results_df.values, axis=0)
-    else:
-        all_trajectories = np.minimum.accumulate(results_df.values, axis=0)
+    # Setup trial numbers for x-axis
+    trials = np.arange(1, len(traces) + 1)
 
-    # Calculate statistics across seeds (axis=1 because now seeds are columns)
-    mean_trajectory = np.mean(all_trajectories, axis=1)
-    median_trajectory = np.median(all_trajectories, axis=1)
-    p25_trajectory = np.percentile(all_trajectories, 25, axis=1)
-    p75_trajectory = np.percentile(all_trajectories, 75, axis=1)
-    p2_5_trajectory = np.percentile(all_trajectories, 2.5, axis=1)
-    p97_5_trajectory = np.percentile(all_trajectories, 97.5, axis=1)
+    # Calculate cumulative best values
+    accumulator = np.maximum if maximize else np.minimum
+    trajectories = accumulator.accumulate(traces.values, axis=0)
 
-    plot_with_contrast(
-        ax, trials, median_trajectory, label="Median" if label else None, color=color
-    )
-    fill_between_with_contrast(
-        ax,
-        trials,
-        p25_trajectory,
-        p75_trajectory,
-        alpha=0.35,
-        label="50% Interval" if label else None,
-        color=color,
-    )
-    fill_between_with_contrast(
-        ax,
-        trials,
-        p2_5_trajectory,
-        p97_5_trajectory,
-        alpha=0.35,
-        label="95% Interval" if label else None,
-        color=color,
-    )
+    # Calculate all percentiles at once for efficiency
+    percentiles = np.percentile(trajectories, [5, 25, 50, 75, 95], axis=1)
+    p5, p25, median, p75, p95 = percentiles
 
-    ax.axvline(
-        n_initial, color="k", linestyle="-", label="Initial Samples" if label else None
-    )
+    # Plot median line with contrast effect
+    plot_with_contrast(ax, trials, median, color=color)
 
-    ax.set_xlabel("Number of Trials")
-    ax.set_ylabel("Best Value Found")
+    # Plot uncertainty bands
+    fill_between_with_contrast(ax, trials, p25, p75, color=color, alpha=0.35)
+    fill_between_with_contrast(ax, trials, p5, p95, color=color, alpha=0.35)
+
+    # Add legend if requested
+    if label is not None:
+        # Create legend entries using plot elements
+        plot_with_contrast(ax, [], [], color=color, label=f"{label} Median")
+        if full_legend:
+            ax.fill_between([], [], [], color=color, alpha=0.65, label="50% Interval")
+            ax.fill_between([], [], [], color=color, alpha=0.35, label="90% Interval")
+        ax.legend(**legend_kwargs)
 
 
 def plot_top_values_discovery(
     ax,
-    results_df: pd.DataFrame,
-    y: torch.Tensor,
+    traces: pd.DataFrame,
+    y: np.ndarray,
     top_percent: float = 5.0,
-    n_initial: int = 10,
     color: str = "maroon",
-    label: bool = False,
+    maximize: bool = True,
+    label: str = None,
+    full_legend: bool = True,
+    legend_kwargs: dict = None,
 ) -> None:
     """
     Plot the percentage of top values discovered over optimization iterations.
 
     Args:
         ax: Matplotlib axis to plot on
-        results_df: DataFrame where each column represents a random seed's optimization trace
-        y: Original target values tensor to determine threshold
-        top_percent: Percentage threshold for considering top values (default: 5%)
-        n_initial: Number of initial samples for vertical line
-        color: Color to use for plotting (default: "maroon")
-        label: Whether to add labels to the plot elements (default: False)
+        traces: DataFrame where each column represents an optimization trace
+        y: Original target values to determine threshold
+        top_percent: Percentage threshold for considering top values (0-100)
+        color: Color to use for the plot elements
+        maximize: If True, look for highest values. If False, look for lowest values
+        show_legend: Whether to show the legend
+        legend_kwargs: Additional keyword arguments for legend customization
     """
-    # Calculate threshold using PyTorch
-    k = int(len(y) * (1 - top_percent / 100))
-    threshold = np.partition(y, k)[k]
-    n_top_total = np.sum(y >= threshold)
+    if not 0 < top_percent < 100:
+        raise ValueError("top_percent must be between 0 and 100")
 
-    # Get number of trials from DataFrame length
-    n_trials = len(results_df)
-    trials = np.arange(1, n_trials + 1)
+    legend_kwargs = legend_kwargs or {
+        "framealpha": 1.0,
+        "edgecolor": "black",
+        "facecolor": "white",
+        "loc": "best",
+    }
 
-    # Calculate discovery trajectories for each seed (column)
-    all_trajectories = []
-    for col in results_df.columns:
-        selected_values = results_df[col].values
-        cumulative_found = np.zeros(n_trials)
+    trials = np.arange(1, len(traces) + 1)
 
-        unique_values = set()
-        for i, val in enumerate(selected_values):
-            if val >= threshold:
-                unique_values.add(val)
-            cumulative_found[i] = len(unique_values)
+    # Calculate threshold and total number of top values
+    k = int(len(y) * (top_percent / 100))
+    if maximize:
+        # For maximization: get kth largest value
+        threshold = np.partition(y, -k)[-k]
+    else:
+        # For minimization: get kth smallest value
+        threshold = np.partition(y, k - 1)[k - 1]
 
-        # Convert to percentage
-        trajectory = (cumulative_found / n_top_total) * 100
-        all_trajectories.append(trajectory)
+    # Count total values meeting threshold
+    n_top_total = np.sum(y >= threshold if maximize else y <= threshold)
 
-    # Convert to numpy array for calculations
-    all_trajectories = np.array(
-        all_trajectories
-    ).T  # Transpose to match plot_optimization_trace
+    def get_discovery_trajectory(values):
+        discovered = set()  # Track unique discoveries
+        cumulative = []
 
-    # Calculate statistics across seeds
-    median_trajectory = np.median(all_trajectories, axis=1)
-    p25_trajectory = np.percentile(all_trajectories, 25, axis=1)
-    p75_trajectory = np.percentile(all_trajectories, 75, axis=1)
-    p2_5_trajectory = np.percentile(all_trajectories, 2.5, axis=1)
-    p97_5_trajectory = np.percentile(all_trajectories, 97.5, axis=1)
+        for val in values:
+            if (maximize and val >= threshold) or (not maximize and val <= threshold):
+                discovered.add(val)
+            cumulative.append(len(discovered))
 
-    # Plot using existing style functions
-    plot_with_contrast(
-        ax,
-        trials,
-        median_trajectory,
-        color=color,
-        label=f"Median (top {top_percent}%)" if label else None,
-    )
-    fill_between_with_contrast(
-        ax,
-        trials,
-        p25_trajectory,
-        p75_trajectory,
-        color=color,
-        alpha=0.35,
-        label="50% Interval" if label else None,
-    )
-    fill_between_with_contrast(
-        ax,
-        trials,
-        p2_5_trajectory,
-        p97_5_trajectory,
-        color=color,
-        alpha=0.35,
-        label="95% Interval" if label else None,
-    )
+        return (np.array(cumulative) / n_top_total) * 100
 
-    # Add reference line for initial samples
-    ax.axvline(
-        n_initial, color="k", linestyle="-", label="Initial Samples" if label else None
-    )
+    # Calculate trajectories for each run
+    trajectories = np.array(
+        [get_discovery_trajectory(traces[col].values) for col in traces.columns]
+    ).T
 
-    # Customize plot
-    ax.set_xlabel("Number of Trials")
-    ax.set_ylabel(f"% of Top {top_percent}% Values Found")
-    ax.set_ylim(0, 100)
+    # Calculate all percentiles at once for efficiency
+    percentiles = np.percentile(trajectories, [5, 25, 50, 75, 95], axis=1)
+    p5, p25, median, p75, p95 = percentiles
+
+    # Plot median line with contrast effect
+    plot_with_contrast(ax, trials, median, color=color)
+
+    # Plot uncertainty bands
+    fill_between_with_contrast(ax, trials, p25, p75, color=color, alpha=0.35)
+    fill_between_with_contrast(ax, trials, p5, p95, color=color, alpha=0.35)
+
+    # Add legend if requested
+    if label is not None:
+        plot_with_contrast(ax, [], [], color=color, label=f"{label} Median")
+        if full_legend:
+            ax.fill_between([], [], [], color=color, alpha=0.65, label="50% Interval")
+            ax.fill_between([], [], [], color=color, alpha=0.35, label="90% Interval")
+        ax.legend(**legend_kwargs)

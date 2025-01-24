@@ -3,6 +3,7 @@ import torch
 import random
 import math
 import pandas as pd
+from typing import Tuple, Optional, List
 
 
 # set the seed for all random use
@@ -146,6 +147,57 @@ def initial_points(x, y, num_initial_points):
     y_initial = y[indicesSTP]
 
     return x_initial, y_initial
+
+
+def preprocess_data(
+    filepath: str, skip_rows: int = 1, delimiter: str = ","
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Preprocess data from CSV file for benchmark experiments.
+
+    Args:
+        filepath: Path to CSV data file
+        invert_target: Whether to invert target values (for minimization problems)
+        skip_rows: Number of header rows to skip
+        delimiter: CSV delimiter character
+
+    Returns:
+        Tuple of (features, targets) as normalized torch tensors
+
+    Raises:
+        FileNotFoundError: If data file doesn't exist
+        ValueError: If data is empty or malformed
+    """
+    try:
+        data = np.loadtxt(filepath, delimiter=delimiter, skiprows=skip_rows)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Data file not found: {filepath}")
+    except ValueError:
+        raise ValueError(f"Failed to parse data from: {filepath}")
+
+    if data.size == 0:
+        raise ValueError("Empty dataset")
+
+    # Split features and target
+    features, target = data[:, :-1], data[:, -1]
+
+    # Average target values for duplicate feature rows
+    unique_features, inverse_indices = np.unique(features, axis=0, return_inverse=True)
+    averaged_targets = np.bincount(inverse_indices, weights=target) / np.bincount(
+        inverse_indices
+    )
+
+    # Combine unique features with averaged targets
+    processed_data = np.column_stack((unique_features, averaged_targets))
+
+    # Convert to tensors
+    X = torch.tensor(processed_data[:, :-1], dtype=torch.double)
+    y = torch.tensor(processed_data[:, -1], dtype=torch.double).flatten()
+
+    # Normalize features
+    X = TorchNormalizer().fit_transform(X)
+
+    return X, y
 
 
 def get_initial_samples(

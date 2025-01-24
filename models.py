@@ -31,7 +31,10 @@ class VarTGP(gpytorch.models.ApproximateGP):
                            the locations of inducing points.
         """
         # Set up sparse variational approximation
-        variational_distribution = CholeskyVariationalDistribution(
+        # variational_distribution = CholeskyVariationalDistribution(
+        #     inducing_points.size(0)
+        # )
+        variational_distribution = gpytorch.variational.NaturalVariationalDistribution(
             inducing_points.size(0)
         )
 
@@ -39,7 +42,7 @@ class VarTGP(gpytorch.models.ApproximateGP):
             self,
             inducing_points,
             variational_distribution,
-            learn_inducing_locations=True,  # Learn inducing points
+            learn_inducing_locations=False,  # Learn inducing points
         )
         super(VarTGP, self).__init__(variational_strategy)
 
@@ -119,7 +122,7 @@ class VarGP(ApproximateGP):
 
     Note:
         Expects inputs to be normalized to [0,1] and outputs to be standardized.
-        Uses learnable inducing point locations (learn_inducing_locations=True).
+        Uses fixed inducing point locations (learn_inducing_locations=False).
     """
 
     def __init__(self, inducing_points):
@@ -129,14 +132,17 @@ class VarGP(ApproximateGP):
             inducing_points: Initial inducing point locations, shape (num_inducing, input_dim)
         """
         # Set up sparse variational approximation with learnable inducing points
-        variational_distribution = CholeskyVariationalDistribution(
+        # variational_distribution = CholeskyVariationalDistribution(
+        #     inducing_points.size(0)
+        # )
+        variational_distribution = gpytorch.variational.NaturalVariationalDistribution(
             inducing_points.size(0)
         )
         variational_strategy = VariationalStrategy(
             self,
             inducing_points,
             variational_distribution,
-            learn_inducing_locations=True,  # Fixed inducing points
+            learn_inducing_locations=False,  # Fixed inducing points
         )
         super(VarGP, self).__init__(variational_strategy)
 

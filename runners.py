@@ -1,172 +1,163 @@
 import torch
-import gpytorch
 import numpy as np
-
-from botorch.acquisition import LogExpectedImprovement
-from gpytorch.likelihoods import GaussianLikelihood
-from optim import train_exact_model
-from models import VarSTP, VarGP, ExactGP  # Assuming these are your model classes
-from utils import set_seeds, get_initial_samples
-from optim import train_variational_model, train_exact_model, train_exact_model_botorch
+import pandas as pd
+from typing import Type, Union, Optional, List, Dict, Tuple
 from tqdm import tqdm, trange
-from typing import Type, Union, Optional, List, Dict
 import warnings
+from botorch.acquisition import LogExpectedImprovement
+from models import VarTGP, VarGP, ExactGP
+from utils import set_seeds, get_initial_samples
+from optim import train_exact_model_botorch, train_natural_variational_model
 
 
 def run_single_loop(
     X: torch.Tensor,
     y: torch.Tensor,
-    model_class: Type[Union[VarSTP, VarGP, ExactGP]],
+    model_class: Type[Union[VarTGP, VarGP, ExactGP]],
     model_kwargs: Optional[dict] = None,
     n_initial: int = 10,
     n_trials: int = 25,
     epochs: int = 100,
     learning_rate: float = 0.1,
     seed: int = 42,
-) -> dict:
+) -> Tuple[List[int], List[float]]:
     """
-    Performs Bayesian optimization loop on given dataset.
-
-    Args:
-        X: Feature matrix
-        y: Target values
-        model_class: Class of the model to use (e.g., VarSTP or VarGP)
-        model_kwargs: Optional dictionary of kwargs to pass to model initialization
-        n_initial: Number of initial points to sample
-        n_trials: Number of optimization trials
-        epochs: Number of training epochs per trial
-        learning_rate: Learning rate for model training
-        seed: Random seed for reproducibility
+    Performs Bayesian optimization loop on given dataset with improved error handling.
 
     Returns:
-        dict containing:
-        - best_x: Best input point found
-        - best_y: Best target value found
-        - X_selected: History of selected points
-        - y_selected: History of selected target values
-        - trained_model: Final trained model
+        Tuple containing:
+        - selected_indices: List of indices selected during optimization
+        - selected_values: List of corresponding y values
     """
     set_seeds(seed)
-
-    # Ensure inputs are double tensors
     X = X.double()
     y = y.double().flatten()
 
-    # Default model kwargs if none provided
     if model_kwargs is None:
         model_kwargs = {}
 
-    # Get initial training data
-    sampled_indices = get_initial_samples(y, n_samples=n_initial, percentile=95)
-    mask = torch.ones(len(X), dtype=torch.bool)
-    mask[sampled_indices] = False
+    # Initialize results tracking
+    selected_indices = []
+    selected_values = []
 
-    X_train = X[sampled_indices]
-    y_train = y[sampled_indices]
-    X_candidate = X[mask]
-    y_candidate = y[mask]
+    try:
+        # Get initial training data
+        initial_indices = get_initial_samples(y, n_samples=n_initial, percentile=50)
+        selected_indices.extend(initial_indices.tolist())
+        selected_values.extend(y[initial_indices].tolist())
 
-    # if there are more trials than data points, reduce number of trials
-    if len(X) - n_initial < n_trials:
-        n_trials = len(X) - n_initial
+        mask = torch.ones(len(X), dtype=torch.bool)
+        mask[initial_indices] = False
 
-    for trial in trange(n_trials):
-        # Initialize and train model
-        if "inducing_points" in model_class.__init__.__code__.co_varnames:
-            model_kwargs["inducing_points"] = X_train
+        X_train = X[selected_indices]
+        y_train = y[selected_indices]
+        X_candidate = X[mask]
+        y_candidate = y[mask]
 
-        if model_class == ExactGP:
-            model_kwargs["X_train"] = X_train
-            model_kwargs["y_train"] = y_train
-            model_kwargs["input_transform"] = None
+        # Adjust n_trials if necessary
+        n_trials = min(n_trials, len(X) - n_initial)
 
-        model = model_class(**model_kwargs).double()
+        for trial in range(n_trials):
+            # Set up model
+            if "inducing_points" in model_class.__init__.__code__.co_varnames:
+                model_kwargs["inducing_points"] = X_train
 
-        if model_class == ExactGP:
-            train_exact_model_botorch(model, X_train, y_train)
-        else:
-            train_variational_model(
-                model, X_train, y_train, epochs=epochs, lr=learning_rate
-            )
+            if model_class == ExactGP:
+                model_kwargs["X_train"] = X_train
+                model_kwargs["y_train"] = y_train
+                model_kwargs["input_transform"] = None
 
-        # Get next point using LogExpectedImprovement
-        model.eval()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            acq_values = LogExpectedImprovement(
-                model, best_f=y_train.max(), maximize=True
-            ).forward(X_candidate.unsqueeze(1))
+            model = model_class(**model_kwargs).double()
 
-        # if variational samples are drawn, average over them
-        if hasattr(model, "num_likelihood_samples"):
-            acq_values = torch.mean(acq_values, dim=0)
+            # Train model
+            if model_class == ExactGP:
+                train_exact_model_botorch(model, X_train, y_train)
+            else:
+                train_natural_variational_model(
+                    model, X_train, y_train, epochs=epochs, lr=learning_rate
+                )
 
-        best_idx = torch.argmax(acq_values)
+            # Get next point
+            model.eval()
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                acq_values = LogExpectedImprovement(
+                    model, best_f=y_train.max(), maximize=True
+                ).forward(X_candidate.unsqueeze(1))
 
-        # Update training and candidate sets
-        X_train = torch.cat([X_train, X_candidate[best_idx].unsqueeze(0)])
-        y_train = torch.cat([y_train, y_candidate[best_idx].unsqueeze(0)])
+            if hasattr(model, "num_likelihood_samples"):
+                acq_values = torch.mean(acq_values, dim=0)
 
-        # Update candidate sets
-        mask = torch.ones(len(X_candidate), dtype=torch.bool)
-        mask[best_idx] = False
-        X_candidate = X_candidate[mask]
-        y_candidate = y_candidate[mask]
+            best_idx = torch.argmax(acq_values)
 
-    # Find best result
-    best_idx = torch.argmax(y_train)
-    best_x = X_train[best_idx]
-    best_y = y_train[best_idx]
+            # Get original index from remaining candidates
+            original_idx = torch.where(mask)[0][best_idx]
+            selected_indices.append(original_idx.item())
+            selected_values.append(y[original_idx].item())
 
-    return {
-        "best_x": best_x,
-        "best_y": best_y,
-        "X_selected": X_train,
-        "y_selected": y_train,
-        "trained_model": model,
-    }
+            # Update training data
+            X_train = torch.cat([X_train, X_candidate[best_idx].unsqueeze(0)])
+            y_train = torch.cat([y_train, y_candidate[best_idx].unsqueeze(0)])
+
+            # Update candidate sets
+            mask[original_idx] = False
+            X_candidate = X[mask]
+            y_candidate = y[mask]
+
+        return selected_indices, selected_values
+
+    except Exception as e:
+        print(f"Error occurred at iteration {len(selected_values)}: {str(e)}")
+        return selected_indices, selected_values
 
 
 def run_many_loops(
     X: torch.Tensor,
     y: torch.Tensor,
-    model_class: Type[Union[VarSTP, VarGP, ExactGP]],
+    model_class: Type[Union[VarTGP, VarGP, ExactGP]],
     seeds: List[int],
-    **kwargs,  # To pass through to run_single_loop
-) -> Dict[int, dict]:
+    **kwargs,
+) -> pd.DataFrame:
     """
-    Performs multiple Bayesian optimization loops with different random seeds.
-
-    Args:
-        X: Feature matrix
-        y: Target values
-        model_class: Class of the model to use (e.g., VarSTP or VarGP)
-        seeds: List of random seeds to use
-        **kwargs: Additional arguments to pass to run_single_loop
+    Runs multiple optimization loops and returns results in a DataFrame with seed as column index.
 
     Returns:
-        Dictionary mapping each seed to its results dictionary containing:
-        - best_x: Best input point found
-        - best_y: Best target value found
-        - X_selected: History of selected points
-        - y_selected: History of selected target values
-        - trained_model: Final trained model
+        DataFrame with iteration as index and seeds as columns, containing two levels:
+        - x_index: Index of selected point in original dataset
+        - y_value: Corresponding y value
     """
-    # Initialize dictionary to store results for each seed
-    all_results = {}
+    n_initial = kwargs.get("n_initial", 10)
+    n_trials = kwargs.get("n_trials", 25)
+    total_iterations = n_initial + n_trials
 
-    # Run optimization with each seed
+    # Initialize data storage
+    data_dict = {
+        key: []
+        for seed in seeds
+        for key in [
+            ("seed_{}".format(seed), "x_index"),
+            ("seed_{}".format(seed), "y_value"),
+        ]
+    }
+
+    # Create index for iterations
+    index = list(range(total_iterations))
+
     for seed in tqdm(seeds, desc="Running optimization loops"):
-        try:
-            if model_class == ExactGP:
-                kwargs["model_kwargs"] = {"X_train": X, "y_train": y}
-            # Run single optimization loop with current seed
-            results = run_single_loop(
-                X=X, y=y, model_class=model_class, seed=seed, **kwargs
-            )
-            all_results[seed] = results
-        except Exception as e:
-            print(f"Error encountered for seed {seed}: {e}")
-            print("Continung with next seed...")
+        indices, values = run_single_loop(
+            X=X, y=y, model_class=model_class, seed=seed, **kwargs
+        )
 
-    return all_results
+        # Pad with NaN if necessary
+        indices.extend([np.nan] * (total_iterations - len(indices)))
+        values.extend([np.nan] * (total_iterations - len(values)))
+
+        # Store results
+        data_dict[("seed_{}".format(seed), "x_index")] = indices
+        data_dict[("seed_{}".format(seed), "y_value")] = values
+
+    # Create DataFrame with multi-level columns
+    df = pd.DataFrame(data_dict, index=index)
+    df.index.name = "iteration"
+
+    return df
