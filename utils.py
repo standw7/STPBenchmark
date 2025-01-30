@@ -8,6 +8,7 @@ from typing import Tuple, Optional, List
 
 # set the seed for all random use
 def set_seeds(seed):
+    seed = int(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)

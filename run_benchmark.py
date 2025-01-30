@@ -6,7 +6,7 @@ from models import VarTGP, VarGP, ExactGP
 from utils import TorchNormalizer, preprocess_data
 from runners import run_many_loops
 
-SMOKE_TEST = True  # run reduced benchmark for testing purposes
+SMOKE_TEST = False  # run reduced benchmark for testing purposes
 
 seed_list = np.loadtxt("random_seeds.txt", dtype=int)
 datasets = os.listdir("data")  # pull in the benchmark sets
