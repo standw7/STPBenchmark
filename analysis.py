@@ -8,7 +8,7 @@ from visualization import plot_optimization_trace, plot_top_values_discovery
 
 colors = ["#003f5c", "#bc5090", "#ffa600"]
 
-dataset_name = "AutoAM"
+dataset_name = "AgNP"
 dataset = pd.read_csv(f"data/{dataset_name}_dataset.csv")
 
 # take the average target value of duplicate feature entries
@@ -20,6 +20,7 @@ dataset = pd.DataFrame(
 
 results = os.listdir("results")
 results = [result for result in results if dataset_name in result]
+results = sorted(results)
 
 # PLOT OPTIMIZATION TRACES
 
@@ -38,6 +39,7 @@ for i, result in enumerate(results):
         ax=ax[0],
         traces=traces_df,
         color=colors[i],
+        maximize=False if dataset_name in ["Perovskite", "AgNP"] else True,
         label=model_name,
         full_legend=True if i == 0 else False,
     )
@@ -53,6 +55,9 @@ ax[1].scatter(
     alpha=0.5,
 )
 ax[1].set_xticks([])
+
+ax[0].set_ylabel("Objective Value")
+ax[0].set_xlabel("Iterations")
 
 plt.tight_layout()
 plt.show()
@@ -73,10 +78,14 @@ for i, result in enumerate(results):
         ax=ax,
         traces=traces_df,
         y=dataset.iloc[:, -1],
+        maximize=False if dataset_name in ["Perovskite", "AgNP"] else True,
         color=colors[i],
         label=model_name,
         full_legend=True if i == 0 else False,
     )
+
+ax.set_ylabel("Percent of Top Values Discovered")
+ax.set_xlabel("Iterations")
 
 plt.tight_layout()
 plt.show()

@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 import pandas as pd
@@ -116,48 +117,79 @@ def run_many_loops(
     y: torch.Tensor,
     model_class: Type[Union[VarTGP, VarGP, ExactGP]],
     seeds: List[int],
+    output_path: str,
+    invert_y: bool = False,
     **kwargs,
 ) -> pd.DataFrame:
     """
-    Runs multiple optimization loops and returns results in a DataFrame with seed as column index.
+    Runs multiple optimization loops and saves results incrementally.
+
+    Args:
+        X: Input tensor
+        y: Target tensor
+        model_class: The model class to use
+        seeds: List of random seeds
+        output_path: Path to save the results file
+        **kwargs: Additional arguments for run_single_loop
 
     Returns:
-        DataFrame with iteration as index and seeds as columns, containing two levels:
-        - x_index: Index of selected point in original dataset
-        - y_value: Corresponding y value
+        DataFrame with iteration as index and seeds as columns
     """
     n_initial = kwargs.get("n_initial", 10)
     n_trials = kwargs.get("n_trials", 25)
     total_iterations = n_initial + n_trials
 
-    # Initialize data storage
-    data_dict = {
-        key: []
-        for seed in seeds
-        for key in [
-            ("seed_{}".format(seed), "x_index"),
-            ("seed_{}".format(seed), "y_value"),
-        ]
-    }
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # Create index for iterations
-    index = list(range(total_iterations))
-
-    for seed in tqdm(seeds, desc="Running optimization loops"):
-        indices, values = run_single_loop(
-            X=X, y=y, model_class=model_class, seed=seed, **kwargs
+    # Load existing results if any
+    if os.path.exists(output_path):
+        existing_df = pd.read_csv(output_path, header=[0, 1], index_col=0)
+        completed_seeds = {
+            int(col.split("_")[1]) for col in existing_df.columns.get_level_values(0)
+        }
+        remaining_seeds = [seed for seed in seeds if seed not in completed_seeds]
+        results_df = existing_df
+    else:
+        remaining_seeds = seeds
+        # Initialize empty DataFrame with multi-level columns
+        columns = pd.MultiIndex.from_tuples(
+            [
+                (f"seed_{seed}", metric)
+                for seed in seeds
+                for metric in ["x_index", "y_value"]
+            ]
         )
+        results_df = pd.DataFrame(index=range(total_iterations), columns=columns)
+        results_df.index.name = "iteration"
 
-        # Pad with NaN if necessary
-        indices.extend([np.nan] * (total_iterations - len(indices)))
-        values.extend([np.nan] * (total_iterations - len(values)))
+    # Run optimization for remaining seeds
+    for seed in tqdm(remaining_seeds, desc="Running optimization loops"):
+        try:
+            indices, values = run_single_loop(
+                X=X, y=y, model_class=model_class, seed=seed, **kwargs
+            )
 
-        # Store results
-        data_dict[("seed_{}".format(seed), "x_index")] = indices
-        data_dict[("seed_{}".format(seed), "y_value")] = values
+            # Pad with NaN if necessary
+            indices.extend([np.nan] * (total_iterations - len(indices)))
+            values.extend([np.nan] * (total_iterations - len(values)))
 
-    # Create DataFrame with multi-level columns
-    df = pd.DataFrame(data_dict, index=index)
-    df.index.name = "iteration"
+            # Update DataFrame
+            results_df[f"seed_{seed}", "x_index"] = indices
+            results_df[f"seed_{seed}", "y_value"] = values
 
-    return df
+            # Save after each seed completion
+            save_df = results_df.copy()
+            if invert_y:
+                # Invert only the y_value columns
+                y_cols = [col for col in save_df.columns if col[1] == "y_value"]
+                save_df[y_cols] = 1.0 / save_df[y_cols]
+            save_df.to_csv(output_path)
+
+        except Exception as e:
+            print(f"Error in seed {seed}: {str(e)}")
+            # Still save results even if there's an error
+            results_df.to_csv(output_path)
+            continue
+
+    return results_df
