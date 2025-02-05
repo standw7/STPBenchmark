@@ -8,7 +8,8 @@ from visualization import plot_optimization_trace, plot_top_values_discovery
 
 colors = ["#003f5c", "#bc5090", "#ffa600"]
 
-dataset_name = "AgNP"
+dataset_name = "Perovskite"
+results_dir = "results/gold_runs"
 dataset = pd.read_csv(f"data/{dataset_name}_dataset.csv")
 
 # take the average target value of duplicate feature entries
@@ -18,7 +19,7 @@ dataset = pd.DataFrame(
     np.column_stack((unique_f, np.bincount(inv, weights=target) / np.bincount(inv)))
 )
 
-results = os.listdir("results")
+results = os.listdir(results_dir)
 results = [result for result in results if dataset_name in result]
 results = sorted(results)
 
@@ -31,7 +32,7 @@ ax[0].set_title(dataset_name, loc="left")
 for i, result in enumerate(results):
 
     model_name = result.split("_")[0]
-    result_data = pd.read_csv(f"results/{result}", header=[0, 1], index_col=0)
+    result_data = pd.read_csv(f"{results_dir}/{result}", header=[0, 1], index_col=0)
 
     traces_df = result_data.xs("y_value", axis=1, level=1)
 
@@ -70,7 +71,7 @@ ax.set_title(dataset_name, loc="left")
 
 for i, result in enumerate(results):
     model_name = result.split("_")[0]
-    result_data = pd.read_csv(f"results/{result}", header=[0, 1], index_col=0)
+    result_data = pd.read_csv(f"{results_dir}/{result}", header=[0, 1], index_col=0)
 
     traces_df = result_data.xs("y_value", axis=1, level=1)
 

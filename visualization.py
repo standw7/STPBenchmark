@@ -1,5 +1,4 @@
 import numpy as np
-import torch
 from typing import Dict
 import pandas as pd
 import matplotlib.patheffects as pe
@@ -53,6 +52,10 @@ def plot_optimization_trace(
         "facecolor": "white",
         "loc": "best",
     }
+
+    # TODO: come up with a more elegant solution for this
+    # drop columns that contain nans
+    traces = traces.dropna(axis=1)
 
     # Setup trial numbers for x-axis
     trials = np.arange(1, len(traces) + 1)
@@ -115,6 +118,10 @@ def plot_top_values_discovery(
         "facecolor": "white",
         "loc": "best",
     }
+
+    # TODO: come up with a more elegant solution for this
+    # drop columns that contain nans
+    traces = traces.dropna(axis=1)
 
     trials = np.arange(1, len(traces) + 1)
 
