@@ -42,7 +42,7 @@ class VarTGP(gpytorch.models.ApproximateGP):
             self,
             inducing_points,
             variational_distribution,
-            learn_inducing_locations=False,  # Learn inducing points
+            learn_inducing_locations=True,  # Learn inducing points
         )
         super(VarTGP, self).__init__(variational_strategy)
 
@@ -142,7 +142,7 @@ class VarGP(ApproximateGP):
             self,
             inducing_points,
             variational_distribution,
-            learn_inducing_locations=False,  # Fixed inducing points
+            learn_inducing_locations=True,  # Fixed inducing points
         )
         super(VarGP, self).__init__(variational_strategy)
 
