@@ -10,7 +10,6 @@ from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.priors import LogNormalPrior
 from gpytorch.constraints import GreaterThan
 
-
 class VarTGP(gpytorch.models.ApproximateGP):
     """Variational Gaussian Process with Student-T likelihood for heavy-tailed observations.
 
@@ -23,7 +22,7 @@ class VarTGP(gpytorch.models.ApproximateGP):
         Uses fixed inducing point locations (learn_inducing_locations=False).
     """
 
-    def __init__(self, inducing_points):
+    def __init__(self, inducing_points, lengthscale):
         """Initialize the model with inducing points.
 
         Args:
@@ -42,18 +41,31 @@ class VarTGP(gpytorch.models.ApproximateGP):
             self,
             inducing_points,
             variational_distribution,
-            learn_inducing_locations=False,  # Learn inducing points
+            learn_inducing_locations=True,  # Learn inducing points
         )
         super(VarTGP, self).__init__(variational_strategy)
 
         # Mean and covariance setup with dimensionality-aware priors
         self.mean_module = ConstantMean()
 
-        # BoTorch-style lengthscale prior that scales with input dimension
+        # Setup kernel with dimensionality-aware priors
         input_dim = inducing_points.size(1)
-        lengthscale_prior = gpytorch.priors.LogNormalPrior(
-            loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
-        )
+        if lengthscale == "LogNormalDimScaling":
+            lengthscale_prior = gpytorch.priors.LogNormalPrior(
+                loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
+            )
+        elif lengthscale == "Gamma":
+            lengthscale_prior = gpytorch.priors.GammaPrior(2.0, 0.15)
+        
+        elif lengthscale == "LogNormal":
+            lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=0.0, scale=1.0)
+        
+        elif lengthscale == "NormalPrior":
+            lengthscale_prior = gpytorch.priors.NormalPrior(0.5, 0.1)
+        
+        else:
+            raise ValueError(f"Invalid lengthscale prior: {lengthscale}")
+
 
         base_kernel = RBFKernel(
             ard_num_dims=input_dim,
@@ -125,7 +137,7 @@ class VarGP(ApproximateGP):
         Uses fixed inducing point locations (learn_inducing_locations=False).
     """
 
-    def __init__(self, inducing_points):
+    def __init__(self, inducing_points, lengthscale):
         """Initialize model with inducing points.
 
         Args:
@@ -142,7 +154,7 @@ class VarGP(ApproximateGP):
             self,
             inducing_points,
             variational_distribution,
-            learn_inducing_locations=False,  # Fixed inducing points
+            learn_inducing_locations=True,  # Fixed inducing points
         )
         super(VarGP, self).__init__(variational_strategy)
 
@@ -151,9 +163,22 @@ class VarGP(ApproximateGP):
 
         # Setup kernel with dimensionality-aware priors
         input_dim = inducing_points.size(1)
-        lengthscale_prior = LogNormalPrior(
-            loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
-        )
+        if lengthscale == "LogNormalDimScaling":
+            lengthscale_prior = gpytorch.priors.LogNormalPrior(
+                loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
+            )
+        elif lengthscale == "Gamma":
+            lengthscale_prior = gpytorch.priors.GammaPrior(2.0, 0.15)
+        
+        elif lengthscale == "LogNormal":
+            lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=0.0, scale=1.0)
+
+        elif lengthscale == "NormalPrior":
+            lengthscale_prior = gpytorch.priors.NormalPrior(0.5, 0.1)
+        
+        else:
+            raise ValueError(f"Invalid lengthscale prior: {lengthscale}")
+
 
         base_kernel = RBFKernel(
             ard_num_dims=input_dim,
