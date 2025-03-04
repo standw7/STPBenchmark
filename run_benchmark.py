@@ -36,7 +36,7 @@ for model_name, model_class in zip(model_names, model_classes):
             seeds=seed_list[:1] if SMOKE_TEST else seed_list,
             n_initial=10,
             n_trials=20 if SMOKE_TEST else 80,
-            epochs=100 if SMOKE_TEST else 500,
+            epochs=100 if SMOKE_TEST else 600,
             learning_rate=0.01,
             output_path=f"results/{model_name}_{dataset[:-4]}_traces_{'SMOKE' if SMOKE_TEST else ''}.csv",
             invert_y=dataset in ["Perovskite_dataset.csv", "AgNP_dataset.csv"],
