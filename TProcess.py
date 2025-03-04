@@ -9,35 +9,46 @@ from numpyro.distributions.distribution import Distribution
 import jax.random as random
 from jax.scipy.special import gammaln
 
-# preliz
-
 
 def squared_exponential_kernel(
-    xi,
-    xj,
+    xi: jnp.ndarray,
+    xj: jnp.ndarray,
     amplitude: float,
-    length_scale: float,
-    jitter: float = 1e-8,
-    noise: float = None,
-):
+    length_scale: float | jnp.ndarray,
+    jitter: float = 1e-9,
+) -> jnp.ndarray:
     """
     Compute the squared exponential (RBF) kernel matrix for multidimensional inputs.
+
+    Also known as the Gaussian or RBF kernel, this covariance function has the form:
+    k(x,x') = amplitude^2 * exp(-0.5 * r^2) where r^2 is the scaled squared
+    distance between inputs.
+
+    Args:
+        xi: First set of inputs with shape (n, d) or (n,)
+        xj: Second set of inputs with shape (m, d) or (m,)
+        amplitude: Output scale parameter (standard deviation)
+        length_scale: Length scale parameter(s). Either a scalar or array of size d
+        jitter: Small constant added to diagonal for numerical stability
+
+    Returns:
+        Kernel matrix with shape (n, m)
     """
-    # Ensure inputs are 2D arrays
+    # Ensure inputs are 2D arrays for consistent handling
     xi = xi.reshape(-1, 1) if len(xi.shape) == 1 else xi
     xj = xj.reshape(-1, 1) if len(xj.shape) == 1 else xj
 
-    # Handle vector-valued length scales
+    # Convert length_scale to broadcast-compatible shape for division
     if isinstance(length_scale, (jnp.ndarray, list, tuple)):
         length_scale = jnp.array(length_scale).reshape(1, 1, -1)
 
+    # Compute scaled squared euclidean distance between all pairs
     diff = xi[:, None, :] - xj[None, :, :]
     scaled_diff = diff / length_scale
     r = jnp.sum(scaled_diff**2, axis=-1)
-    K = jitter + amplitude**2 * jnp.exp(-0.5 * r)
 
-    if noise is not None:
-        K += noise**2 * jnp.eye(xi.shape[0])
+    # Compute kernel matrix with optional jitter on diagonal
+    K = jitter + amplitude**2 * jnp.exp(-0.5 * r)
 
     return K
 
@@ -51,15 +62,13 @@ class StudentTP:
     def __init__(
         self,
         input_dim: int,
-        mean_fn=None,
         noise_prior_dist=None,
         lengthscale_prior_dist=None,
         amplitude_prior_dist=None,
         nu_prior_dist=None,
-        jitter=1e-8,
+        jitter=1e-9,
     ):
         self.input_dim = input_dim
-        self.mean_fn = mean_fn
         self.noise_prior_dist = noise_prior_dist or dist.LogNormal(0, 1)
         self.lengthscale_prior_dist = lengthscale_prior_dist or dist.LogNormal(0, 1)
         self.amplitude_prior_dist = amplitude_prior_dist or dist.LogNormal(0, 1)
@@ -81,20 +90,19 @@ class StudentTP:
         amplitude = numpyro.sample("amplitude", self.amplitude_prior_dist)
         noise = numpyro.sample("noise", self.noise_prior_dist)
         nu = numpyro.sample("nu", self.nu_prior_dist)
+
         # Sample lengthscale per dimension
         with numpyro.plate("ard", self.input_dim):
             length_scale = numpyro.sample("length_scale", self.lengthscale_prior_dist)
 
         # Compute mean
         f_loc = jnp.zeros(n)
-        if self.mean_fn is not None:
-            f_loc += self.mean_fn(X)
 
         # Compute base kernel
         K = squared_exponential_kernel(
             X, X, amplitude, length_scale, noise=noise, jitter=self.jitter
         )
-        K = ((nu - 2) / nu) * K
+        # K = ((nu - 2) / nu) * K
 
         # Sample y according to Student-t Process formula
         numpyro.sample(
@@ -151,9 +159,9 @@ class StudentTP:
                 X_test, self.X_train, amplitude, length_scale, jitter=self.jitter
             )
 
-            K_train = ((nu - 2) / nu) * K_train
-            K_test = ((nu - 2) / nu) * K_test
-            K_cross = ((nu - 2) / nu) * K_cross
+            # K_train = ((nu - 2) / nu) * K_train
+            # K_test = ((nu - 2) / nu) * K_test
+            # K_cross = ((nu - 2) / nu) * K_cross
 
             # Compute predictive mean
             K_train_cho = jax.scipy.linalg.cho_factor(K_train)
@@ -169,7 +177,9 @@ class StudentTP:
 
             # Scale covariance according to the papers' formulation
             scale_factor = (nu + beta1 - 2) / (nu + len(self.y_train) - 2)
-            K_post = scale_factor * K_post
+            K_post = (
+                scale_factor * K_post
+            )  # Only apply to variance terms if matching MATLAB exactly
 
             # Updated degrees of freedom
             nu_post = nu + len(self.y_train)
