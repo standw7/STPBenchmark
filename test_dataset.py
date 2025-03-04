@@ -1,3 +1,5 @@
+# Benchmarking script for testing a single model on a single dataset - for debugging
+
 import torch
 import numpy as np
 import pandas as pd
@@ -14,8 +16,8 @@ def run_benchmark(
     run_name,
     seed_list,
     n_initial=10,
-    n_trials=40,
-    epochs=250,
+    n_trials=20,
+    epochs=200,
     learning_rate=0.05,
     invert_target=False,
 ):
@@ -42,7 +44,7 @@ def run_benchmark(
     X = TorchNormalizer().fit_transform(X)
 
     # Run optimization
-    results = run_many_loops(
+    results = run_single_loop(
         X,
         y,
         seeds=seed_list,

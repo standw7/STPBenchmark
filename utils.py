@@ -235,6 +235,57 @@ def get_initial_samples(
     return sampled_indices
 
 
+def get_initial_samples_sobol(X: torch.Tensor, n_samples: int) -> torch.Tensor:
+    """Samples indices using a Sobol sequence for better space-filling properties.
+
+    Args:
+        X: Input feature tensor (not the target values)
+        n_samples: Number of indices to sample
+
+    Returns:
+        Tensor of sampled indices based on Sobol sequence
+    """
+    import torch
+    from torch.quasirandom import SobolEngine
+
+    # Get dimensionality of feature space
+    n_points, n_dim = X.shape
+
+    if n_samples > n_points:
+        raise ValueError(
+            f"Cannot sample {n_samples} points from {n_points} total points."
+        )
+
+    # Generate Sobol sequence
+    sobol = SobolEngine(dimension=n_dim)
+    sobol_points = sobol.draw(n_samples)
+
+    # Scale to feature range
+    X_min, _ = X.min(dim=0)
+    X_max, _ = X.max(dim=0)
+    scaled_sobol = X_min + sobol_points * (X_max - X_min)
+
+    # Find nearest neighbors to Sobol points
+    indices = []
+    remaining_indices = set(range(n_points))
+
+    for sobol_point in scaled_sobol:
+        # Calculate distances to all points
+        distances = torch.norm(X - sobol_point, dim=1)
+
+        # Find closest point not already selected
+        while True:
+            idx = torch.argmin(distances).item()
+            if idx in remaining_indices:
+                indices.append(idx)
+                remaining_indices.remove(idx)
+                break
+            # If already selected, set its distance to infinity and try again
+            distances[idx] = float("inf")
+
+    return torch.tensor(indices)
+
+
 # Set the device to use
 def get_device():
     if torch.backends.mps.is_available():

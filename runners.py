@@ -7,7 +7,7 @@ from tqdm import tqdm, trange
 import warnings
 from botorch.acquisition import LogExpectedImprovement
 from models import VarTGP, VarGP, ExactGP
-from utils import set_seeds, get_initial_samples
+from utils import set_seeds, get_initial_samples, get_initial_samples_sobol
 from optim import train_exact_model_botorch, train_natural_variational_model
 
 
@@ -43,7 +43,8 @@ def run_single_loop(
 
     try:
         # Get initial training data
-        initial_indices = get_initial_samples(y, n_samples=n_initial, percentile=50)
+        initial_indices = get_initial_samples_sobol(X, n_samples=n_initial)
+        # initial_indices = get_initial_samples(y, n_samples=n_initial, percentile=50)
         selected_indices.extend(initial_indices.tolist())
         selected_values.extend(y[initial_indices].tolist())
 
@@ -162,6 +163,10 @@ def run_many_loops(
         )
         results_df = pd.DataFrame(index=range(total_iterations), columns=columns)
         results_df.index.name = "iteration"
+
+    if len(remaining_seeds) == 0:
+        print("     [INFO] All requested seeded runs already completed.")
+        return results_df
 
     # Run optimization for remaining seeds
     for seed in tqdm(remaining_seeds, desc="Running optimization loops"):

@@ -3,12 +3,17 @@ import torch
 import gpytorch
 import math
 from gpytorch.models import ApproximateGP
-from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
+from gpytorch.variational import (
+    NaturalVariationalDistribution,
+    CholeskyVariationalDistribution,
+    VariationalStrategy,
+)
 from gpytorch.means import ConstantMean
 from gpytorch.kernels import ScaleKernel, RBFKernel
 from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.priors import LogNormalPrior
 from gpytorch.constraints import GreaterThan
+
 
 class VarTGP(gpytorch.models.ApproximateGP):
     """Variational Gaussian Process with Student-T likelihood for heavy-tailed observations.
@@ -22,25 +27,18 @@ class VarTGP(gpytorch.models.ApproximateGP):
         Uses fixed inducing point locations (learn_inducing_locations=False).
     """
 
-    def __init__(self, inducing_points, lengthscale):
+    def __init__(self, inducing_points, lengthscale_prior=None):
         """Initialize the model with inducing points.
 
         Args:
             inducing_points: Tensor of shape (num_inducing, input_dim) containing
                            the locations of inducing points.
         """
-        # Set up sparse variational approximation
-        # variational_distribution = CholeskyVariationalDistribution(
-        #     inducing_points.size(0)
-        # )
-        variational_distribution = gpytorch.variational.NaturalVariationalDistribution(
-            inducing_points.size(0)
-        )
 
         variational_strategy = VariationalStrategy(
             self,
             inducing_points,
-            variational_distribution,
+            NaturalVariationalDistribution(inducing_points.size(0)),
             learn_inducing_locations=True,  # Learn inducing points
         )
         super(VarTGP, self).__init__(variational_strategy)
@@ -48,30 +46,17 @@ class VarTGP(gpytorch.models.ApproximateGP):
         # Mean and covariance setup with dimensionality-aware priors
         self.mean_module = ConstantMean()
 
-        # Setup kernel with dimensionality-aware priors
         input_dim = inducing_points.size(1)
-        if lengthscale == "LogNormalDimScaling":
-            lengthscale_prior = gpytorch.priors.LogNormalPrior(
-                loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
-            )
-        elif lengthscale == "Gamma":
-            lengthscale_prior = gpytorch.priors.GammaPrior(2.0, 0.15)
-        
-        elif lengthscale == "LogNormal":
-            lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=0.0, scale=1.0)
-        
-        elif lengthscale == "NormalPrior":
-            lengthscale_prior = gpytorch.priors.NormalPrior(0.5, 0.1)
-        
-        else:
-            raise ValueError(f"Invalid lengthscale prior: {lengthscale}")
-
+        self.lengthscale_prior = lengthscale_prior or LogNormalPrior(0.0, 1.0)
+        # self.lengthscale_prior = LogNormalPrior(
+        #     loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
+        # )
 
         base_kernel = RBFKernel(
             ard_num_dims=input_dim,
-            lengthscale_prior=lengthscale_prior,
+            lengthscale_prior=self.lengthscale_prior,
             lengthscale_constraint=GreaterThan(
-                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
+                2.5e-2, transform=None, initial_value=self.lengthscale_prior.mode
             ),
         )
 
@@ -137,54 +122,35 @@ class VarGP(ApproximateGP):
         Uses fixed inducing point locations (learn_inducing_locations=False).
     """
 
-    def __init__(self, inducing_points, lengthscale):
+    def __init__(self, inducing_points, lengthscale_prior=None):
         """Initialize model with inducing points.
 
         Args:
             inducing_points: Initial inducing point locations, shape (num_inducing, input_dim)
         """
-        # Set up sparse variational approximation with learnable inducing points
-        # variational_distribution = CholeskyVariationalDistribution(
-        #     inducing_points.size(0)
-        # )
-        variational_distribution = gpytorch.variational.NaturalVariationalDistribution(
-            inducing_points.size(0)
-        )
+
         variational_strategy = VariationalStrategy(
             self,
             inducing_points,
-            variational_distribution,
-            learn_inducing_locations=True,  # Fixed inducing points
+            NaturalVariationalDistribution(inducing_points.size(0)),
+            learn_inducing_locations=True,  # trainable inducing point locations
         )
         super(VarGP, self).__init__(variational_strategy)
 
         # Mean and likelihood setup with BoTorch-style priors
         self.mean_module = ConstantMean()
 
-        # Setup kernel with dimensionality-aware priors
         input_dim = inducing_points.size(1)
-        if lengthscale == "LogNormalDimScaling":
-            lengthscale_prior = gpytorch.priors.LogNormalPrior(
-                loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
-            )
-        elif lengthscale == "Gamma":
-            lengthscale_prior = gpytorch.priors.GammaPrior(2.0, 0.15)
-        
-        elif lengthscale == "LogNormal":
-            lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=0.0, scale=1.0)
-
-        elif lengthscale == "NormalPrior":
-            lengthscale_prior = gpytorch.priors.NormalPrior(0.5, 0.1)
-        
-        else:
-            raise ValueError(f"Invalid lengthscale prior: {lengthscale}")
-
+        self.lengthscale_prior = lengthscale_prior or LogNormalPrior(0.0, 1.0)
+        # self.lengthscale_prior = LogNormalPrior(
+        #     loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
+        # )
 
         base_kernel = RBFKernel(
             ard_num_dims=input_dim,
-            lengthscale_prior=lengthscale_prior,
+            lengthscale_prior=self.lengthscale_prior,
             lengthscale_constraint=GreaterThan(
-                2.5e-2, transform=None, initial_value=lengthscale_prior.mode
+                2.5e-2, transform=None, initial_value=self.lengthscale_prior.mode
             ),
         )
         # Kernel with outputscale prior
