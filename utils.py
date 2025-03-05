@@ -4,6 +4,7 @@ import random
 import math
 import pandas as pd
 from typing import Tuple, Optional, List
+from torch.quasirandom import SobolEngine
 
 
 # set the seed for all random use
@@ -235,55 +236,49 @@ def get_initial_samples(
     return sampled_indices
 
 
-def get_initial_samples_sobol(X: torch.Tensor, n_samples: int) -> torch.Tensor:
-    """Samples indices using a Sobol sequence for better space-filling properties.
-
-    Args:
-        X: Input feature tensor (not the target values)
-        n_samples: Number of indices to sample
-
-    Returns:
-        Tensor of sampled indices based on Sobol sequence
+def get_initial_samples_sobol(
+    X: torch.Tensor,
+    y: torch.Tensor,
+    n_samples: int = 10,
+    percentile: float = 95.0,
+) -> torch.Tensor:
     """
-    import torch
-    from torch.quasirandom import SobolEngine
+    Sample points using Sobol sequence from data below percentile threshold.
+    """
+    # Calculate threshold based on percentile
+    threshold = torch.quantile(y, percentile / 100)
 
-    # Get dimensionality of feature space
-    n_points, n_dim = X.shape
+    # Find points below the threshold
+    valid_indices = (y <= threshold).nonzero(as_tuple=True)[0]
 
-    if n_samples > n_points:
-        raise ValueError(
-            f"Cannot sample {n_samples} points from {n_points} total points."
-        )
+    if len(valid_indices) < n_samples:
+        return valid_indices
 
-    # Generate Sobol sequence
-    sobol = SobolEngine(dimension=n_dim)
-    sobol_points = sobol.draw(n_samples)
+    # Get the valid points
+    X_valid = X[valid_indices]
 
-    # Scale to feature range
-    X_min, _ = X.min(dim=0)
-    X_max, _ = X.max(dim=0)
-    scaled_sobol = X_min + sobol_points * (X_max - X_min)
+    # Normalize the valid points to [0,1] for proper scaling
+    X_min = X_valid.min(dim=0)[0]
+    X_max = X_valid.max(dim=0)[0]
+    X_range = X_max - X_min
+    X_range[X_range == 0] = 1.0  # Avoid division by zero
 
-    # Find nearest neighbors to Sobol points
-    indices = []
-    remaining_indices = set(range(n_points))
+    # Generate Sobol points in unit hypercube
+    d = X.shape[1]
+    sobol_engine = SobolEngine(dimension=d, scramble=True)
+    sobol_points = sobol_engine.draw(n_samples)
 
+    # Scale Sobol points to the range of valid data
+    scaled_sobol = sobol_points * X_range + X_min
+
+    # Find nearest neighbors to scaled Sobol points
+    selected_indices = []
     for sobol_point in scaled_sobol:
-        # Calculate distances to all points
-        distances = torch.norm(X - sobol_point, dim=1)
+        distances = torch.norm(X_valid - sobol_point, dim=1)
+        nearest_idx = valid_indices[torch.argmin(distances)]
+        selected_indices.append(nearest_idx.item())
 
-        # Find closest point not already selected
-        while True:
-            idx = torch.argmin(distances).item()
-            if idx in remaining_indices:
-                indices.append(idx)
-                remaining_indices.remove(idx)
-                break
-            # If already selected, set its distance to infinity and try again
-            distances[idx] = float("inf")
-
-    return torch.tensor(indices)
+    return torch.tensor(selected_indices, dtype=torch.long)
 
 
 # Set the device to use

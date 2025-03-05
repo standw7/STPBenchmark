@@ -43,7 +43,9 @@ def run_single_loop(
 
     try:
         # Get initial training data
-        initial_indices = get_initial_samples_sobol(X, n_samples=n_initial)
+        initial_indices = get_initial_samples_sobol(
+            X, y, n_samples=n_initial, percentile=50
+        )
         # initial_indices = get_initial_samples(y, n_samples=n_initial, percentile=50)
         selected_indices.extend(initial_indices.tolist())
         selected_values.extend(y[initial_indices].tolist())
@@ -87,7 +89,7 @@ def run_single_loop(
                     model, best_f=y_train.max(), maximize=True
                 ).forward(X_candidate.unsqueeze(1))
 
-            if hasattr(model, "num_likelihood_samples"):
+            if acq_values.dim() > 1 and acq_values.shape[0] > 1:
                 acq_values = torch.mean(acq_values, dim=0)
 
             best_idx = torch.argmax(acq_values)
