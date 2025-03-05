@@ -202,6 +202,101 @@ class VarGP(ApproximateGP):
         return posterior
 
 
+class VarLGP(gpytorch.models.ApproximateGP):
+    """Variational Gaussian Process with Laplace likelihood for robust regression.
+
+    Uses variational inference with inducing points for scalability and a Laplace
+    likelihood for robustness to outliers. Incorporates dimensionality-aware
+    priors for improved performance across different input dimensions.
+
+    Note:
+        Expects inputs to be normalized to [0,1] and outputs to be standardized.
+        Uses trainable inducing point locations.
+    """
+
+    def __init__(self, inducing_points, lengthscale_prior=None):
+        """Initialize the model with inducing points.
+
+        Args:
+            inducing_points: Tensor of shape (num_inducing, input_dim) containing
+                           the locations of inducing points.
+        """
+
+        variational_strategy = VariationalStrategy(
+            self,
+            inducing_points,
+            NaturalVariationalDistribution(inducing_points.size(0)),
+            learn_inducing_locations=True,  # Learn inducing points
+        )
+        super(VarLGP, self).__init__(variational_strategy)
+
+        # Mean and covariance setup with dimensionality-aware priors
+        self.mean_module = ConstantMean()
+
+        input_dim = inducing_points.size(1)
+        self.lengthscale_prior = lengthscale_prior or LogNormalPrior(0.0, 1.0)
+        # self.lengthscale_prior = LogNormalPrior(
+        #     loc=math.sqrt(2) + math.log(input_dim) * 0.5, scale=math.sqrt(3)
+        # )
+
+        base_kernel = RBFKernel(
+            ard_num_dims=input_dim,
+            lengthscale_prior=self.lengthscale_prior,
+            lengthscale_constraint=GreaterThan(
+                2.5e-2, transform=None, initial_value=self.lengthscale_prior.mode
+            ),
+        )
+
+        # Kernel with outputscale prior
+        outputscale_prior = LogNormalPrior(loc=0.0, scale=1.0)
+        self.covar_module = ScaleKernel(
+            base_kernel,
+            outputscale_prior=outputscale_prior,
+            outputscale_constraint=gpytorch.constraints.GreaterThan(
+                1e-4, transform=None, initial_value=outputscale_prior.mode
+            ),
+        )
+
+        # Laplace likelihood with prior on noise parameter
+        noise_prior = LogNormalPrior(loc=-4.0, scale=1.0)
+        self.likelihood = gpytorch.likelihoods.LaplaceLikelihood(
+            noise_prior=noise_prior,
+            noise_constraint=GreaterThan(
+                1e-4, transform=None, initial_value=noise_prior.mode
+            ),
+        )
+
+    @property
+    def num_outputs(self) -> int:
+        """Number of output dimensions. Required for BoTorch compatibility."""
+        return 1
+
+    def forward(self, x):
+        """Compute the prior distribution at input locations x."""
+        mean_x = self.mean_module(x)
+        covar_x = self.covar_module(x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+    def posterior(self, X, observation_noise=True, num_samples=2048, **kwargs):
+        """Compute the posterior distribution at test points X.
+
+        Args:
+            X: Test locations
+            observation_noise: Whether to include likelihood noise in predictions
+            num_samples: Number of MC samples for posterior approximation
+
+        Returns:
+            Distribution at test locations
+        """
+        self.num_likelihood_samples = num_samples
+        self.eval()
+        with torch.no_grad(), gpytorch.settings.num_likelihood_samples(num_samples):
+            posterior = self(X)
+            if observation_noise:
+                posterior = self.likelihood(posterior)
+        return posterior
+
+
 class ExactGP(gpytorch.models.ExactGP):
     """Exact GP regression with BoTorch-style priors and input transforms.
 

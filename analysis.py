@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 from visualization import plot_optimization_trace, plot_top_values_discovery
 
-colors = ["#003f5c", "#bc5090", "#ffa600"]
+colors = ["#003f5c", "#7a5195", "#ef5675", "#ffa600"]
 
-dataset_name = "Perovskite"
-results_dir = "results/gold_runs"
+dataset_name = "P3HT"
+results_dir = "results"  # /gold_runs"
 dataset = pd.read_csv(f"data/{dataset_name}_dataset.csv")
 
 # take the average target value of duplicate feature entries
