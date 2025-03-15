@@ -6,7 +6,7 @@ from models import VarTGP, VarGP, VarLGP, ExactGP
 from utils import TorchNormalizer, preprocess_data
 from runners import run_many_loops
 
-SMOKE_TEST = True  # run reduced benchmark for testing purposes
+SMOKE_TEST = False  # run reduced benchmark for testing purposes
 
 if SMOKE_TEST:
     print("\nRUNNING SMOKE TEST")
@@ -15,7 +15,7 @@ seed_list = np.loadtxt("random_seeds.txt", dtype=int)
 datasets = os.listdir("data")  # pull in the benchmark sets
 
 model_classes = [VarTGP, VarGP, VarLGP, ExactGP]
-model_names = ["VarTGP", "VarGP", "VarLGP", "ExactGP"]
+model_names = ["VarLGP", "ExactGP"]
 
 for model_name, model_class in zip(model_names, model_classes):
 
