@@ -73,7 +73,7 @@ def plot_optimization_trace(
 
     # Plot uncertainty bands
     fill_between_with_contrast(ax, trials, p25, p75, color=color, alpha=0.35)
-    fill_between_with_contrast(ax, trials, p5, p95, color=color, alpha=0.35)
+    # fill_between_with_contrast(ax, trials, p5, p95, color=color, alpha=0.35)
 
     # Add legend if requested
     if label is not None:
@@ -162,7 +162,7 @@ def plot_top_values_discovery(
 
     # Plot uncertainty bands
     fill_between_with_contrast(ax, trials, p25, p75, color=color, alpha=0.35)
-    fill_between_with_contrast(ax, trials, p5, p95, color=color, alpha=0.35)
+    # fill_between_with_contrast(ax, trials, p5, p95, color=color, alpha=0.35)
 
     # Add legend if requested
     if label is not None:
