@@ -5,6 +5,7 @@ import math
 import pandas as pd
 from typing import Tuple, Optional, List
 from torch.quasirandom import SobolEngine
+from gpytorch.distributions import Distribution, MultivariateNormal
 
 
 # set the seed for all random use
@@ -368,3 +369,51 @@ def process_arrays(prefix, num_arrays, max_length):
     mean_values = np.mean(stack, axis=0)
     std_values = np.std(stack, axis=0)
     return mean_values, std_values
+
+
+def get_prediction_summary(
+    posterior: Distribution,
+    num_samples: int = 1024,
+    quantiles: Tuple[float, float] = (0.025, 0.975),
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Compute predictive mean, variance, and quantiles from a GPyTorch posterior.
+
+    Args:
+        posterior: GPyTorch posterior distribution (e.g., from model.posterior()).
+        num_samples: Number of samples for Monte Carlo estimation (if needed).
+        quantiles: Tuple of lower and upper quantiles (e.g., 0.025 and 0.975).
+
+    Returns:
+        Tuple of mean, variance, lower quantile, upper quantile (all torch.Tensor),
+        each of shape [event_size].
+    """
+
+    likelihood_dist = posterior.__str__().split("(")[0]
+    print(f"{likelihood_dist} likelihood detected, sampling accordingly.")
+
+    if isinstance(posterior, MultivariateNormal):
+        mean = posterior.mean
+        variance = posterior.variance
+        stddev = variance.clamp_min(1e-9).sqrt()
+        normal = torch.distributions.Normal(0.0, 1.0)
+        lower_ci = mean + stddev * normal.icdf(
+            torch.tensor(quantiles[0], device=mean.device)
+        )
+        upper_ci = mean + stddev * normal.icdf(
+            torch.tensor(quantiles[1], device=mean.device)
+        )
+    else:
+        samples = posterior.sample(torch.Size([num_samples]))  # [S, B, E] or [S, E]
+        if samples.dim() > 2:
+            # Flatten [S, B, E] -> [S * B, E]
+            samples = samples.view(-1, samples.shape[-1])
+        else:
+            # Already [S, E]
+            pass
+        mean = samples.mean(dim=0)
+        variance = samples.var(dim=0)
+        lower_ci = torch.quantile(samples, quantiles[0], dim=0)
+        upper_ci = torch.quantile(samples, quantiles[1], dim=0)
+
+    return mean.detach(), variance.detach(), lower_ci.detach(), upper_ci.detach()
